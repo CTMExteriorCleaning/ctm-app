@@ -737,7 +737,7 @@ VIEWS.importLeads = function(){
   <section class="panel"><h3>1. Download your leads from Meta</h3>
     <p class="hint" style="font-size:14px">In <a href="https://business.facebook.com/latest/leads_center" target="_blank" rel="noopener">Meta Business Suite</a>, open <b>All tools → Leads Center</b> (or your Instant Form under <b>Forms library</b>) and choose <b>Download</b> as CSV. Any file with name, phone, email and address columns works too.</p>
     <h3 style="margin-top:14px">2. Choose the file</h3>
-    <div class="row" style="margin-top:8px"><input type="file" id="lead-file" accept=".csv,.tsv,.txt,text/csv"></div>
+    <div class="row" style="margin-top:8px"><input type="file" id="lead-file"></div>
     <p class="hint">The service they asked for is taken from your form's custom question (anything mentioning service, clean or job). Other answers go into notes. Leads already in your customers, matched by phone, email or lead ID, are skipped.</p></section>
   ${importRows ? `<section class="panel"><div class="row"><h3>${esc(importName)}: ${importRows.length} lead${importRows.length === 1 ? "" : "s"}, ${fresh.length} new</h3><span class="spacer"></span>${fresh.length ? `<button class="btn primary" data-act="doImport">Import ${fresh.length} new lead${fresh.length === 1 ? "" : "s"}</button>` : ""}</div>
     <div class="list">${importRows.map(l => `<div class="item" style="cursor:default"><div class="main"><div class="t">${esc(l.name)} ${isDuplicate(l) ? '<span class="pill">Already saved</span>' : '<span class="pill sent">New</span>'}</div><div class="d">${esc(l.service || "No service given")} · ${esc(l.phone)} · ${esc([l.address, l.postcode].filter(Boolean).join(", "))}</div></div><div class="amt">${fmtDate(l.leadDate)}</div></div>`).join("") || `<div class="empty">No leads found in that file. Check it's the CSV download from Meta.</div>`}</div></section>` : ""}`;
@@ -903,7 +903,7 @@ VIEWS.business = function(){
   <section class="panel"><h2>Backup</h2><p class="hint">Download everything (customers, quotes, invoices, jobs and prices) as a file you can keep, or your customer list as a spreadsheet.</p>
     <div class="row" style="margin-top:8px"><button class="btn" data-act="backup">Download full backup</button><button class="btn" data-act="csv">Download customers (CSV)</button></div>
     <p class="hint" style="margin-top:12px">Restore from a backup file. Records in the file are added or updated; nothing else is deleted.</p>
-    <div class="row" style="margin-top:6px"><input type="file" id="restore-file" accept=".json,application/json"></div></section>
+    <div class="row" style="margin-top:6px"><input type="file" id="restore-file"></div></section>
   <section class="panel"><div class="row"><span>Signed in as <b>${esc(me ? me.email : "")}</b></span><span class="spacer"></span><button class="btn" data-act="signOut">Sign out</button></div></section>`;
 };
 function svcHTML(s){
