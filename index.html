@@ -1,0 +1,1163 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CTM Quoting &amp; CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#14222b">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.50.0/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+/* Layout: app shell. Sticky top bar with tabs on wide screens, bottom tab bar on phones; one working column of panels. */
+:root{
+  --bg:#eef2f3; --surface:#ffffff; --surface-2:#f6f8f9; --line:#d5dde1; --fg:#14222b; --muted:#5b6b75;
+  --accent:#0a6a94; --accent-ink:#ffffff; --accent-soft:#e1eff6;
+  --ok:#1f7a4d; --ok-soft:#e2f2e9; --warn:#a35f00; --warn-soft:#fbefd9; --bad:#b3261e; --bad-soft:#fbe3e1;
+  --stripe:#f2c400; --bar:#14222b; --bar-ink:#eef2f3;
+  --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f171c; --surface:#16222a; --surface-2:#1b2a33; --line:#2a3b46; --fg:#e4ecf0; --muted:#97a8b2;
+  --accent:#4fb3de; --accent-ink:#06202c; --accent-soft:#16384a;
+  --ok:#5cc98f; --ok-soft:#173527; --warn:#f0b250; --warn-soft:#3a2a10; --bad:#f2817a; --bad-soft:#3d1a18;
+  --stripe:#f2c400; --bar:#0a1115; --bar-ink:#e4ecf0; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0f171c; --surface:#16222a; --surface-2:#1b2a33; --line:#2a3b46; --fg:#e4ecf0; --muted:#97a8b2;
+  --accent:#4fb3de; --accent-ink:#06202c; --accent-soft:#16384a;
+  --ok:#5cc98f; --ok-soft:#173527; --warn:#f0b250; --warn-soft:#3a2a10; --bad:#f2817a; --bad-soft:#3d1a18;
+  --stripe:#f2c400; --bar:#0a1115; --bar-ink:#e4ecf0; color-scheme:dark }
+html,body{min-height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bar)}
+*{box-sizing:border-box}
+h1,h2,h3{font-family:var(--f-display);font-weight:700;letter-spacing:.01em;text-wrap:balance;margin:0;line-height:1.1}
+h1{font-size:30px} h2{font-size:22px} h3{font-size:18px}
+.mono,.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bar);color:var(--bar-ink);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top-in{max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:20px;min-height:56px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-size:21px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
+.brand .mark{width:28px;height:28px;border-radius:6px;background:repeating-linear-gradient(-45deg,var(--stripe) 0 6px,var(--bar) 6px 12px);border:2px solid var(--stripe)}
+.brand small{font-family:var(--f-body);font-weight:500;font-size:12px;opacity:.7;letter-spacing:.06em;text-transform:uppercase}
+.tabs{display:flex;gap:4px;margin-left:auto}
+.tab{background:none;border:0;color:inherit;opacity:.72;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:6px}
+.tab:hover{opacity:1;background:rgba(127,127,127,.18)}
+.tab[aria-current="page"]{opacity:1;background:var(--stripe);color:#14222b}
+.tab .badge{background:var(--bad);color:#fff;border-radius:99px;font-size:11px;padding:0 6px;font-family:var(--f-mono)}
+.tab svg{width:18px;height:18px}
+@media (max-width:820px){
+  .tabs{position:fixed;left:0;right:0;bottom:0;margin:0;background:var(--bar);justify-content:space-around;gap:0;
+    padding:6px max(6px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(6px,env(safe-area-inset-left,0px));border-top:3px solid var(--stripe)}
+  .tab{flex-direction:column;gap:2px;font-size:11px;padding:6px 4px;flex:1;min-width:0}
+  main{padding-bottom:96px!important}
+}
+
+main{max-width:1100px;margin:0 auto;padding-block:22px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.head p{margin:4px 0 0;color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
+.panel > h2,.panel > h3{margin-bottom:10px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.stat .k{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.stat .v{font-family:var(--f-display);font-size:28px;font-weight:700;margin-top:2px}
+.stat .s{font-size:13px;color:var(--muted)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--surface);
+  padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:600;text-decoration:none;color:var(--fg);white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--bad)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.spacer{flex:1}
+
+.list{display:flex;flex-direction:column}
+.item{display:flex;align-items:center;gap:12px;padding:11px 4px;border-top:1px solid var(--line);cursor:pointer;min-width:0}
+.item:first-child{border-top:0}
+.item:hover{background:var(--surface-2)}
+.item .main{flex:1;min-width:0}
+.item .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .d{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .amt{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500;text-align:right;white-space:nowrap}
+.empty{color:var(--muted);padding:14px 4px;font-size:14px}
+
+.pill{display:inline-block;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:99px;white-space:nowrap;background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.pill.draft{} .pill.sent{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.pill.accepted,.pill.paid,.pill.done{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.pill.declined{background:var(--surface-2);color:var(--muted)}
+.pill.unpaid,.pill.due{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.pill.overdue{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.pill.job{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;color:var(--muted);min-width:0}
+input[type=text],input[type=tel],input[type=email],input[type=number],input[type=date],input[type=time],input[type=search],select,textarea{
+  width:100%;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--fg);font-weight:400;font-size:15px;min-width:0}
+textarea{min-height:70px;resize:vertical}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.fields .wide{grid-column:1/-1}
+.check{display:flex;align-items:center;gap:8px;font-weight:600}
+.hint{font-size:12.5px;color:var(--muted);font-weight:400}
+
+.line{border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--surface-2);display:grid;gap:10px;grid-template-columns:2fr 1.6fr 1fr auto;align-items:end}
+.line .calc{font-size:12.5px;color:var(--muted);grid-column:1/-1;display:flex;gap:12px;flex-wrap:wrap}
+.line .calc b{font-family:var(--f-mono);color:var(--fg);font-weight:500}
+@media (max-width:640px){.line{grid-template-columns:1fr 1fr}.line .wide-sm{grid-column:1/-1}}
+.totals{margin-left:auto;min-width:240px;display:grid;grid-template-columns:1fr auto;gap:4px 18px;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.totals .big{font-family:var(--f-display);font-size:24px;font-weight:700}
+
+/* paper preview */
+.paper{background:#fff;color:#14222b;border-radius:6px;border:1px solid var(--line);padding:28px;max-width:760px;width:100%;margin:0 auto;box-shadow:0 1px 0 rgba(0,0,0,.04);overflow-x:auto}
+.paper .ph{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;border-bottom:4px solid #14222b;padding-bottom:12px}
+.paper .ph img{max-height:64px;max-width:180px}
+.paper h1{font-size:34px;color:#14222b}
+.paper .meta{font-size:13px;color:#445}
+.paper table{width:100%;border-collapse:collapse;margin-top:16px;font-size:14px}
+.paper th{text-align:left;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:#556;border-bottom:1px solid #ccd;padding:6px 4px}
+.paper td{padding:8px 4px;border-bottom:1px solid #e3e7ea;vertical-align:top}
+.paper td.r,.paper th.r{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.paper .foot{margin-top:18px;font-size:13px;color:#445;white-space:pre-wrap}
+.paper .tot{margin:14px 0 0 auto;width:min(100%,280px);display:grid;grid-template-columns:1fr auto;gap:3px 12px;font-family:var(--f-mono);font-size:14px}
+.paper .tot .g{font-weight:700;font-size:17px;border-top:2px solid #14222b;padding-top:4px}
+
+/* calendar */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .dow{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;text-align:center;padding:4px 0}
+.cal .day{min-height:86px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:4px;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-width:0;text-align:left}
+.cal .day.out{opacity:.45}
+.cal .day.today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.cal .day.sel{background:var(--accent-soft)}
+.cal .dn{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.cal .ev{font-size:11px;border-radius:4px;padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.ev.job{background:var(--accent-soft);color:var(--accent)} .ev.fu{background:var(--warn-soft);color:var(--warn)} .ev.inv{background:var(--bad-soft);color:var(--bad)}
+@media (max-width:640px){.cal .day{min-height:54px}.cal .ev{font-size:0;height:6px;padding:0}}
+
+.banner{border-radius:var(--r);padding:10px 14px;font-size:14px;background:var(--warn-soft);color:var(--warn);border:1px solid transparent}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:600;z-index:20;max-width:calc(100% - 32px)}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--bad-soft);color:var(--bad);padding:8px 10px;border-radius:8px;font-weight:600}
+.searchbar{display:flex;gap:8px;flex-wrap:wrap}
+.searchbar input{flex:1;min-width:180px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:var(--surface);padding:6px 12px;cursor:pointer;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.svc{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr auto;gap:8px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+.svc:first-child{border-top:0}
+.svc .prop{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+@media (max-width:640px){.svc{grid-template-columns:1fr 1fr}.svc .nm{grid-column:1/-1}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <div class="brand"><span class="mark" aria-hidden="true"></span><span>CTM <small>Quotes &amp; customers</small></span></div>
+  <nav class="tabs" id="tabs"></nav>
+</div></header>
+<main id="app"><div class="panel"><h2>Loading your jobs and customers…</h2><p class="hint">Your quotes, customers, calendar and invoices appear here once they load.</p></div></main>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+(function(){
+"use strict";
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const num = v => { const n = parseFloat(String(v ?? "").replace(/,/g, ".")); return isFinite(n) ? n : 0; };
+const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+const gbp = n => (n < 0 ? "-" : "") + "£" + Math.abs(r2(n || 0)).toLocaleString("en-GB", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const pad = n => String(n).padStart(2, "0");
+const iso = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const today = () => iso(new Date());
+const parseISO = s => { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1); };
+const addDays = (s, n) => { const d = parseISO(s); d.setDate(d.getDate() + n); return iso(d); };
+const fmtDate = s => s ? parseISO(s).toLocaleDateString("en-GB", {weekday: "short", day: "numeric", month: "short"}) : "";
+const fmtLong = s => s ? parseISO(s).toLocaleDateString("en-GB", {day: "numeric", month: "long", year: "numeric"}) : "";
+const daysBetween = (a, b) => Math.round((parseISO(b) - parseISO(a)) / 86400000);
+function toast(msg){ const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 2600); }
+
+/* Measurement sums: "5x4 + 2.5x3 + 10" -> 36.5 */
+function measure(expr){
+  const s = String(expr || "").toLowerCase().replace(/×|\*/g, "x").replace(/,/g, ".").replace(/m²|m2|sqm|m\b/g, "");
+  if (!s.trim()) return 0;
+  return r2(s.split("+").reduce((sum, term) => {
+    const parts = term.split("x").map(p => p.trim()).filter(Boolean);
+    if (!parts.length) return sum;
+    return sum + parts.reduce((p, x) => p * num(x), 1);
+  }, 0));
+}
+
+const UNITS = {m2: "per m²", m: "per metre", item: "per item", fixed: "fixed price", property: "by property type"};
+const PROPS = [["terraced","Terraced"],["semi","Semi-detached"],["detached","Detached"],["bungalow","Bungalow"]];
+const PROP_LABEL = Object.fromEntries(PROPS);
+const SOURCES = ["Facebook ad","Instagram ad","Facebook","Google","Word of mouth","Leaflet","Van signage","Checkatrade","Nextdoor","Website","Repeat customer","Other"];
+
+/* ---------- store ---------- */
+const COLS = ["customers","quotes","invoices","jobs","services","settings"];
+const S = {customers:{}, quotes:{}, invoices:{}, jobs:{}, services:{}, settings:{}};
+let store = null, loaded = new Set(), connected = false, readOnly = false;
+
+let sb = null, me = null;
+async function initStore(){
+  const cfg = window.CTM_CONFIG || {};
+  if (!window.supabase || !cfg.supabaseUrl || !cfg.supabaseAnonKey){
+    $("#app").innerHTML = `<div class="panel"><h2>Almost there</h2><p>The database isn't set up yet. Add your Supabase details to <code>config.js</code>.</p></div>`; return;
+  }
+  sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  const {data} = await sb.auth.getSession();
+  sb.auth.onAuthStateChange((ev, session) => {
+    if (ev === "SIGNED_OUT") { location.reload(); }
+    if (ev === "SIGNED_IN" && !me && session) { me = session.user; startData(); }
+  });
+  if (data.session) { me = data.session.user; startData(); } else { showLogin(); }
+}
+async function startData(){
+  connected = true;
+  store = {
+    set: async (c, id, data) => { const {error} = await sb.from("records").upsert({user_id: me.id, col: c, id, data, updated_at: new Date().toISOString()}, {onConflict: "user_id,col,id"}); if (error) throw error; },
+    del: async (c, id) => { const {error} = await sb.from("records").delete().match({user_id: me.id, col: c, id}); if (error) throw error; }
+  };
+  const fresh = {customers:{}, quotes:{}, invoices:{}, jobs:{}, services:{}, settings:{}};
+  for (let from = 0; ; from += 1000){
+    const {data, error} = await sb.from("records").select("col,id,data").range(from, from + 999);
+    if (error) { $("#app").innerHTML = `<div class="panel"><h2>Couldn't load your data</h2><p>${esc(error.message)}</p><button class="btn" onclick="location.reload()">Try again</button></div>`; return; }
+    data.forEach(r => { if (fresh[r.col]) fresh[r.col][r.id] = Object.assign({id: r.id}, r.data); });
+    if (data.length < 1000) break;
+  }
+  COLS.forEach(c => { S[c] = fresh[c]; loaded.add(c); });
+  onData();
+  sb.channel("records-" + me.id).on("postgres_changes", {event: "*", schema: "public", table: "records", filter: "user_id=eq." + me.id}, p => {
+    const r = p.eventType === "DELETE" ? p.old : p.new; if (!r || !S[r.col]) return;
+    if (p.eventType === "DELETE") delete S[r.col][r.id]; else S[r.col][r.id] = Object.assign({id: r.id}, r.data);
+    onData();
+  }).subscribe();
+}
+function showLogin(mode){
+  mode = mode || "in";
+  $("#tabs").innerHTML = "";
+  $("#app").innerHTML = `<section class="panel" style="max-width:420px;margin:30px auto;width:100%"><h1>${mode === "in" ? "Sign in" : "Create your account"}</h1>
+    <p class="hint" style="font-size:14px">${mode === "in" ? "Your quotes, customers and invoices are private to your account." : "Set up the account you'll use on your phone and laptop."}</p>
+    <form id="login" class="fields" style="grid-template-columns:1fr;margin-top:12px">
+      <label class="f">Email<input type="email" id="l-email" autocomplete="email" required></label>
+      <label class="f">Password<input type="password" id="l-pass" autocomplete="${mode === "in" ? "current-password" : "new-password"}" minlength="8" required style="width:100%;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px"></label>
+      <button class="btn primary" type="submit">${mode === "in" ? "Sign in" : "Create account"}</button>
+      <p class="hint" id="l-msg"></p>
+      <button class="btn ghost sm" type="button" id="l-switch">${mode === "in" ? "First time? Create your account" : "Already have an account? Sign in"}</button>
+      ${mode === "in" ? `<button class="btn ghost sm" type="button" id="l-reset">Forgot password</button>` : ""}
+    </form></section>`;
+  $("#l-switch").onclick = () => showLogin(mode === "in" ? "up" : "in");
+  if ($("#l-reset")) $("#l-reset").onclick = async () => { const e = $("#l-email").value.trim(); if (!e) { $("#l-msg").textContent = "Type your email first."; return; } await sb.auth.resetPasswordForEmail(e, {redirectTo: location.origin}); $("#l-msg").textContent = "Check your email for a reset link."; };
+  $("#login").onsubmit = async ev => {
+    ev.preventDefault(); const email = $("#l-email").value.trim(), password = $("#l-pass").value;
+    $("#l-msg").textContent = "One moment…";
+    const res = mode === "in" ? await sb.auth.signInWithPassword({email, password}) : await sb.auth.signUp({email, password});
+    if (res.error) { $("#l-msg").textContent = res.error.message; return; }
+    if (mode === "up" && !res.data.session) { $("#l-msg").textContent = "Check your email and tap the link to confirm, then sign in."; return; }
+  };
+}
+async function put(c, rec){
+  const id = rec.id || uid(); const body = Object.assign({}, rec); delete body.id;
+  body.updatedAt = new Date().toISOString();
+  if (!body.createdAt) body.createdAt = body.updatedAt;
+  S[c][id] = Object.assign({id}, body);
+  try { await store.set(c, id, body); }
+  catch (e){ console.warn(e); toast("Couldn't save. Check your connection and try again."); throw e; }
+  return id;
+}
+async function remove(c, id){ delete S[c][id]; try { await store.del(c, id); } catch (e){ toast("Couldn't delete. Try again."); } }
+
+const biz = () => Object.assign({
+  name: "CTM Exterior Cleaning", owner: "", phone: "", email: "", address: "", website: "", logo: "",
+  bankName: "", sortCode: "", accountNo: "", vatOn: false, vatRate: 20, vatNo: "",
+  paymentDays: 7, followUpDays: 3, validDays: 30,
+  quoteNote: "Thank you for the opportunity to quote. Prices include all equipment, water and waste removal.",
+  invoiceNote: "Thank you for your business."
+}, S.settings.business || {});
+async function nextNumber(kind){
+  const c = Object.assign({quote: 0, invoice: 0}, S.settings.counters || {});
+  const existing = Object.values(kind === "quote" ? S.quotes : S.invoices).map(r => parseInt(String(r.number || "").replace(/\D/g, ""), 10) || 0);
+  const n = Math.max(c[kind] || 0, ...existing, 0) + 1;
+  c[kind] = n; delete c.id;
+  await put("settings", Object.assign({id: "counters"}, c));
+  return (kind === "quote" ? "Q-" : "INV-") + String(n).padStart(4, "0");
+}
+
+/* ---------- money ---------- */
+function lineAmount(l){
+  let base = 0, qty = 0;
+  if (l.unit === "property") base = num(l.propRate);
+  else if (l.unit === "fixed") base = num(l.rate);
+  else { qty = l.unit === "item" ? num(l.measure) : measure(l.measure); base = qty * num(l.rate); }
+  let amount = base, minApplied = false;
+  if (num(l.min) > 0 && base > 0 && base < num(l.min)){ amount = num(l.min); minApplied = true; }
+  if (l.override !== "" && l.override != null && !isNaN(parseFloat(l.override))) amount = num(l.override);
+  return {qty: r2(qty), base: r2(base), amount: r2(amount), minApplied};
+}
+function totals(doc){
+  const lines = doc.lines || [];
+  const sub = r2(lines.reduce((s, l) => s + lineAmount(l).amount, 0));
+  const disc = r2(Math.min(num(doc.discount), sub));
+  const vatOn = doc.vatOn != null ? doc.vatOn : biz().vatOn;
+  const vatRate = doc.vatRate != null ? num(doc.vatRate) : num(biz().vatRate);
+  const net = r2(sub - disc);
+  const vat = vatOn ? r2(net * vatRate / 100) : 0;
+  return {sub, disc, net, vat, vatOn, vatRate, total: r2(net + vat)};
+}
+function lineText(l){
+  const a = lineAmount(l);
+  if (l.unit === "property") return PROP_LABEL[l.propType] || "";
+  if (l.unit === "fixed") return "";
+  if (l.unit === "item") return a.qty + " × " + gbp(num(l.rate));
+  const u = l.unit === "m2" ? "m²" : "m";
+  return a.qty + " " + u + " @ " + gbp(num(l.rate)) + "/" + u + (a.minApplied ? " (minimum charge)" : "");
+}
+
+/* ---------- derived ---------- */
+const cust = id => S.customers[id] || {name: "Unknown customer"};
+const byDate = (a, b, k) => String(b[k] || "").localeCompare(String(a[k] || ""));
+function invStatus(inv){ if (inv.status === "paid") return "paid"; if (inv.dueDate && inv.dueDate < today()) return "overdue"; return "unpaid"; }
+function followUps(){
+  const t = today();
+  return Object.values(S.quotes).filter(q => q.status === "sent" && q.followUpOn && q.followUpOn <= t).sort((a, b) => a.followUpOn.localeCompare(b.followUpOn));
+}
+function chases(){
+  const t = today();
+  return Object.values(S.invoices).filter(i => i.status !== "paid" && i.dueDate && addDays(i.dueDate, 1) <= t).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+function phoneLink(p){ return p ? `<a href="tel:${esc(String(p).replace(/[^\d+]/g, ""))}">${esc(p)}</a>` : ""; }
+function waNumber(p){ let d = String(p || "").replace(/\D/g, ""); if (d.startsWith("0")) d = "44" + d.slice(1); return d; }
+
+/* ---------- router ---------- */
+let view = {name: "today"};
+const TABS = [
+  ["today","Today",'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'],
+  ["quotes","Quotes",'<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7M9 8h4"/>'],
+  ["customers","Customers",'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.6c1.8.7 3 2.5 3.5 5.4"/>'],
+  ["calendar","Calendar",'<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'],
+  ["invoices","Invoices",'<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>'],
+  ["business","Business",'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3.6 15H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.7 4.4V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>']
+];
+const TAB_OF = {importLeads: "customers", quote: "quotes", quoteEdit: "quotes", customer: "customers", customerEdit: "customers", invoice: "invoices", invoiceEdit: "invoices", job: "calendar"};
+function go(name, extra){
+  view = Object.assign({name}, extra || {});
+  if (TABS.some(t => t[0] === name)) { try { history.replaceState(null, "", "#" + name); } catch (e) {} }
+  render(true); window.scrollTo(0, 0);
+}
+const EDITORS = new Set(["quoteEdit","customerEdit","invoiceEdit","job","business"]);
+function onData(){
+  if (loaded.size < COLS.length) return;
+  if (EDITORS.has(view.name) && view.rendered) { renderTabs(); return; }
+  if (document.querySelector("#bookbox > *, .confirm, .panel > textarea")) { renderTabs(); return; }
+  render(false);
+}
+function renderTabs(){
+  const active = TAB_OF[view.name] || view.name;
+  const badge = followUps().length + chases().length + newLeads().length;
+  $("#tabs").innerHTML = TABS.map(([k, label, icon]) =>
+    `<button class="tab" data-tab="${k}" ${active === k ? 'aria-current="page"' : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg><span>${label}</span>${k === "today" && badge ? `<span class="badge">${badge}</span>` : ""}</button>`).join("");
+}
+function render(fresh){
+  renderTabs();
+  const fn = VIEWS[view.name] || VIEWS.today;
+  const banner = navigator.onLine === false ? `<div class="banner">You're offline. Changes won't save until you're back on signal.</div>` : "";
+  $("#app").innerHTML = banner + fn();
+  view.rendered = true;
+  if (view.after) { const a = view.after; view.after = null; a(); }
+}
+
+/* ---------- views ---------- */
+const VIEWS = {};
+
+VIEWS.today = function(){
+  const t = today(), b = biz();
+  const fu = followUps(), ch = chases(), leads = newLeads();
+  const jobsAhead = Object.values(S.jobs).filter(j => !j.done && j.date >= t && j.date <= addDays(t, 6)).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
+  const late = Object.values(S.jobs).filter(j => !j.done && j.date < t);
+  const month = t.slice(0, 7);
+  const paidMonth = Object.values(S.invoices).filter(i => i.status === "paid" && String(i.paidOn || "").startsWith(month)).reduce((s, i) => s + totals(i).total, 0);
+  const owed = Object.values(S.invoices).filter(i => i.status !== "paid").reduce((s, i) => s + totals(i).total, 0);
+  const openQ = Object.values(S.quotes).filter(q => q.status === "sent");
+  const openVal = openQ.reduce((s, q) => s + totals(q).total, 0);
+  const qMonth = Object.values(S.quotes).filter(q => String(q.date || "").startsWith(month));
+  const won = qMonth.filter(q => q.status === "accepted").length;
+  const decided = qMonth.filter(q => q.status === "accepted" || q.status === "declined").length;
+  return `
+  <div class="head"><div><h1>${esc(greet())}${b.owner ? ", " + esc(b.owner.split(" ")[0]) : ""}</h1><p>${fmtLong(t)}</p></div>
+    <div class="row"><button class="btn" data-act="newCustomer">New customer</button><button class="btn primary" data-act="newQuote">New quote</button></div></div>
+  <div class="stats">
+    <div class="stat"><div class="k">Paid this month</div><div class="v num">${gbp(paidMonth)}</div></div>
+    <div class="stat"><div class="k">Owed to you</div><div class="v num">${gbp(owed)}</div><div class="s">${Object.values(S.invoices).filter(i => invStatus(i) === "overdue").length} overdue</div></div>
+    <div class="stat"><div class="k">Quotes waiting</div><div class="v num">${gbp(openVal)}</div><div class="s">${openQ.length} sent, no answer yet</div></div>
+    <div class="stat"><div class="k">Win rate this month</div><div class="v num">${decided ? Math.round(won / decided * 100) + "%" : "–"}</div><div class="s">${won} won of ${decided} decided</div></div>
+  </div>
+  ${leads.length ? `<section class="panel"><div class="row"><h2>New leads</h2><span class="spacer"></span><button class="btn sm ghost" data-tab="importLeads">Import leads</button></div><div class="list">${leads.map(leadRow).join("")}</div></section>` : ""}
+  <div class="grid2">
+    <section class="panel"><h2>Needs a call</h2>
+      <div class="list">${fu.length || ch.length ? "" : `<div class="empty">Nobody to chase today. Sent quotes get a follow-up ${b.followUpDays} days later, and unpaid invoices show here the day after they're due.</div>`}
+      ${fu.map(q => { const c = cust(q.customerId); return `<div class="item" data-open="quote" data-id="${q.id}"><div class="main"><div class="t">${esc(c.name)} <span class="pill sent">Quote follow-up</span></div><div class="d">${esc(q.number)} · sent ${fmtDate(q.sentOn)} · ${esc(c.phone || "no phone")}</div></div><div class="amt">${gbp(totals(q).total)}</div></div>`; }).join("")}
+      ${ch.map(i => { const c = cust(i.customerId); return `<div class="item" data-open="invoice" data-id="${i.id}"><div class="main"><div class="t">${esc(c.name)} <span class="pill overdue">Payment due</span></div><div class="d">${esc(i.number)} · due ${fmtDate(i.dueDate)} (${daysBetween(i.dueDate, t)} days ago)</div></div><div class="amt">${gbp(totals(i).total)}</div></div>`; }).join("")}
+      </div></section>
+    <section class="panel"><div class="row"><h2>Next 7 days</h2><span class="spacer"></span><button class="btn sm" data-act="newJob">Book a job</button></div>
+      <div class="list">
+      ${late.length ? `<div class="item" data-tab="calendar"><div class="main"><div class="t" style="color:var(--warn)">${late.length} past job${late.length > 1 ? "s" : ""} not marked done</div><div class="d">Open the calendar to tick them off or invoice them.</div></div></div>` : ""}
+      ${jobsAhead.length ? jobsAhead.map(jobRow).join("") : `<div class="empty">No jobs booked this week. Accept a quote to book it in, or book a repeat clean from a customer.</div>`}
+      </div></section>
+  </div>
+  <section class="panel"><div class="row"><h2>Recent quotes</h2><span class="spacer"></span><button class="btn sm ghost" data-tab="quotes">All quotes</button></div>
+    <div class="list">${Object.values(S.quotes).sort((a, b) => byDate(a, b, "updatedAt")).slice(0, 5).map(quoteRow).join("") || `<div class="empty">No quotes yet. Tap New quote to price your first job.</div>`}</div></section>`;
+};
+function newLeads(){
+  const quoted = new Set(Object.values(S.quotes).map(q => q.customerId));
+  return Object.values(S.customers).filter(c => c.stage === "lead" && !quoted.has(c.id)).sort((a, b) => String(b.leadDate || b.createdAt || "").localeCompare(String(a.leadDate || a.createdAt || "")));
+}
+function leadRow(c){
+  return `<div class="item" data-open="customer" data-id="${c.id}"><div class="main"><div class="t">${esc(c.name)} <span class="pill sent">New lead</span></div><div class="d">${esc(c.service || "No service given")} · ${esc(c.postcode || c.address || "")}${c.leadDate ? " · " + fmtDate(c.leadDate) : ""}</div></div><div class="amt">${esc(c.phone || "")}</div></div>`;
+}
+function greet(){ const h = new Date().getHours(); return h < 12 ? "Morning" : h < 18 ? "Afternoon" : "Evening"; }
+function jobRow(j){
+  const c = cust(j.customerId);
+  return `<div class="item" data-open="job" data-id="${j.id}"><div class="main"><div class="t">${esc(c.name)} · ${esc(j.title || "Clean")}</div><div class="d">${fmtDate(j.date)}${j.time ? " " + esc(j.time) : ""} · ${esc(c.postcode || c.address || "")}${j.repeatWeeks ? " · every " + j.repeatWeeks + " wks" : ""}</div></div><div class="amt">${j.done ? '<span class="pill done">Done</span>' : gbp(num(j.price))}</div></div>`;
+}
+function quoteRow(q){
+  const c = cust(q.customerId);
+  return `<div class="item" data-open="quote" data-id="${q.id}"><div class="main"><div class="t">${esc(c.name)}</div><div class="d"><span class="mono">${esc(q.number)}</span> · ${fmtDate(q.date)} · ${esc((q.lines || []).map(l => l.name).join(", "))}</div></div><span class="pill ${esc(q.status)}">${esc(q.status)}</span><div class="amt">${gbp(totals(q).total)}</div></div>`;
+}
+function invoiceRow(i){
+  const c = cust(i.customerId), st = invStatus(i);
+  return `<div class="item" data-open="invoice" data-id="${i.id}"><div class="main"><div class="t">${esc(c.name)}</div><div class="d"><span class="mono">${esc(i.number)}</span> · due ${fmtDate(i.dueDate)}${i.paidOn ? " · paid " + fmtDate(i.paidOn) : ""}</div></div><span class="pill ${st}">${st}</span><div class="amt">${gbp(totals(i).total)}</div></div>`;
+}
+
+/* quotes list */
+let qFilter = "all", qSearch = "";
+VIEWS.quotes = function(){
+  const list = Object.values(S.quotes).filter(q => qFilter === "all" || q.status === qFilter)
+    .filter(q => !qSearch || (cust(q.customerId).name + " " + q.number + " " + (cust(q.customerId).postcode || "")).toLowerCase().includes(qSearch.toLowerCase()))
+    .sort((a, b) => byDate(a, b, "date") || byDate(a, b, "number"));
+  return `<div class="head"><div><h1>Quotes</h1><p>${Object.keys(S.quotes).length} total</p></div><button class="btn primary" data-act="newQuote">New quote</button></div>
+  <div class="searchbar"><input type="search" id="qsearch" placeholder="Search name, postcode or quote number" value="${esc(qSearch)}">
+    <div class="seg">${["all","draft","sent","accepted","declined"].map(f => `<button data-qf="${f}" aria-pressed="${qFilter === f}">${f[0].toUpperCase() + f.slice(1)}</button>`).join("")}</div></div>
+  <section class="panel"><div class="list">${list.map(quoteRow).join("") || `<div class="empty">No quotes match.</div>`}</div></section>`;
+};
+
+/* quote editor */
+let draft = null;
+function newLine(svc){
+  if (!svc) return {name: "", unit: "fixed", rate: 0, min: 0, measure: "", propType: "semi", propRate: 0, override: "", note: ""};
+  return {serviceId: svc.id, name: svc.name, unit: svc.unit, rate: num(svc.rate), min: num(svc.min), measure: "", propType: "semi",
+    propRate: svc.unit === "property" ? num((svc.prop || {}).semi) : 0, override: "", note: ""};
+}
+function startQuote(customerId, from){
+  draft = from ? JSON.parse(JSON.stringify(from)) : {customerId: customerId || "", date: today(), status: "draft", lines: [], discount: 0, notes: "", vatOn: biz().vatOn, vatRate: biz().vatRate};
+  if (!draft.lines.length) draft.lines.push(newLine(null));
+  go("quoteEdit");
+}
+function svcOptions(sel){
+  const svcs = Object.values(S.services).filter(s => s.active !== false).sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+  return `<option value="">Custom item…</option>` + svcs.map(s => `<option value="${s.id}" ${s.id === sel ? "selected" : ""}>${esc(s.name)}</option>`).join("");
+}
+function lineHTML(l, i){
+  const a = lineAmount(l);
+  let input;
+  if (l.unit === "property") input = `<label class="f">Property type<select data-l="${i}" data-k="propType">${PROPS.map(([k, v]) => `<option value="${k}" ${l.propType === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>`;
+  else if (l.unit === "fixed") input = `<label class="f">Price (£)<input type="number" step="0.01" inputmode="decimal" data-l="${i}" data-k="rate" value="${esc(l.rate)}"></label>`;
+  else input = `<label class="f">${l.unit === "item" ? "How many" : l.unit === "m" ? "Length (m) – add sums like 12+8" : "Area (m²) – add sums like 6x4 + 3x2"}<input type="text" inputmode="decimal" data-l="${i}" data-k="measure" value="${esc(l.measure)}" placeholder="${l.unit === "item" ? "e.g. 3" : l.unit === "m" ? "e.g. 12 + 8.5" : "e.g. 8x5 + 2x6"}"></label>`;
+  const custom = !l.serviceId;
+  return `<div class="line">
+    <label class="f wide-sm">Service<select data-l="${i}" data-k="serviceId">${svcOptions(l.serviceId)}</select>
+      ${custom ? `<input type="text" data-l="${i}" data-k="name" value="${esc(l.name)}" placeholder="Describe the work">` : ""}</label>
+    ${input}
+    ${l.unit !== "fixed" && l.unit !== "property" ? `<label class="f">Rate (£)<input type="number" step="0.01" inputmode="decimal" data-l="${i}" data-k="rate" value="${esc(l.rate)}"></label>` : l.unit === "property" ? `<label class="f">Price (£)<input type="number" step="0.01" inputmode="decimal" data-l="${i}" data-k="propRate" value="${esc(l.propRate)}"></label>` : `<span></span>`}
+    <button class="btn sm ghost danger" data-act="delLine" data-i="${i}" aria-label="Remove line">Remove</button>
+    <label class="f wide-sm" style="grid-column:1/3">Note on quote (optional)<input type="text" data-l="${i}" data-k="note" value="${esc(l.note)}" placeholder="e.g. front and rear, includes re-sanding"></label>
+    <label class="f">Override total (£)<input type="number" step="0.01" inputmode="decimal" data-l="${i}" data-k="override" value="${esc(l.override)}" placeholder="optional"></label>
+    <span></span>
+    <div class="calc" id="calc${i}">${calcHTML(l, a)}</div>
+  </div>`;
+}
+function calcHTML(l, a){
+  a = a || lineAmount(l);
+  const bits = [];
+  if (l.unit === "m2" || l.unit === "m" || l.unit === "item") bits.push(`Measured <b>${a.qty}${l.unit === "m2" ? " m²" : l.unit === "m" ? " m" : ""}</b>`);
+  if (num(l.min) > 0) bits.push(`Minimum <b>${gbp(num(l.min))}</b>${a.minApplied ? " (applied)" : ""}`);
+  bits.push(`Line total <b>${gbp(a.amount)}</b>`);
+  return bits.join("");
+}
+function customerOptions(sel){
+  return `<option value="">Choose a customer…</option>` + Object.values(S.customers).sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}${c.postcode ? " · " + esc(c.postcode) : ""}</option>`).join("");
+}
+VIEWS.quoteEdit = function(){
+  const d = draft, b = biz();
+  return `<div class="head"><div><h1>${d.id ? "Edit " + esc(d.number) : "New quote"}</h1><p>Add each service, enter measurements, and the price works itself out.</p></div>
+    <div class="row"><button class="btn" data-act="cancelQuote">Cancel</button><button class="btn primary" data-act="saveQuote">Save quote</button></div></div>
+  <section class="panel"><div class="fields">
+    <label class="f">Customer<select id="q-customer">${customerOptions(d.customerId)}</select><span class="hint"><button class="btn sm ghost" data-act="quickCustomer" style="padding-left:0">+ Add a new customer instead</button></span></label>
+    <label class="f">Quote date<input type="date" id="q-date" value="${esc(d.date)}"></label>
+  </div>
+  <div id="quick" ${d.quick ? "" : "hidden"}><div class="fields" style="margin-top:12px">
+    <label class="f">Name<input type="text" id="qc-name" autocomplete="off" value="${esc((d.quick || {}).name)}"></label>
+    <label class="f">Phone<input type="tel" id="qc-phone" value="${esc((d.quick || {}).phone)}"></label>
+    <label class="f">Email<input type="email" id="qc-email" value="${esc((d.quick || {}).email)}"></label>
+    <label class="f">Address<input type="text" id="qc-address" value="${esc((d.quick || {}).address)}"></label>
+    <label class="f">Postcode<input type="text" id="qc-postcode" value="${esc((d.quick || {}).postcode)}"></label>
+    <label class="f">How they found you<select id="qc-source">${SOURCES.map(s => `<option ${(d.quick || {}).source === s ? "selected" : ""}>${s}</option>`).join("")}</select></label>
+  </div></div></section>
+  <section class="panel"><h2>Work to be done</h2><div style="display:flex;flex-direction:column;gap:10px" id="lines">${d.lines.map(lineHTML).join("")}</div>
+    <div class="row" style="margin-top:12px"><button class="btn" data-act="addLine">+ Add service</button></div></section>
+  <section class="panel"><div class="row" style="align-items:flex-start;gap:24px">
+    <div class="fields" style="flex:1;min-width:240px">
+      <label class="f">Discount (£)<input type="number" step="0.01" inputmode="decimal" id="q-discount" value="${esc(d.discount || "")}" placeholder="0"></label>
+      <label class="f check" style="flex-direction:row;align-self:end"><input type="checkbox" id="q-vat" ${d.vatOn ? "checked" : ""}> Add VAT at ${esc(b.vatRate)}%</label>
+      <label class="f wide">Notes for the customer<textarea id="q-notes" placeholder="Access, parking, anything they should know">${esc(d.notes)}</textarea></label>
+      <label class="f wide">Private notes (not on the quote)<textarea id="q-private" placeholder="e.g. heavy moss on north side, bring the surface cleaner">${esc(d.privateNotes || "")}</textarea></label>
+    </div>
+    <div class="totals" id="q-totals">${totalsHTML(d)}</div></div></section>`;
+};
+function totalsHTML(d){
+  const t = totals(d);
+  return `<span>Subtotal</span><span>${gbp(t.sub)}</span>${t.disc ? `<span>Discount</span><span>-${gbp(t.disc)}</span>` : ""}${t.vatOn ? `<span>VAT ${t.vatRate}%</span><span>${gbp(t.vat)}</span>` : ""}<span class="big">Total</span><span class="big">${gbp(t.total)}</span>`;
+}
+async function saveQuote(){
+  const d = draft;
+  d.customerId = $("#q-customer").value; d.date = $("#q-date").value || today();
+  d.discount = num($("#q-discount").value); d.notes = $("#q-notes").value; d.privateNotes = $("#q-private").value; d.vatOn = $("#q-vat").checked; d.vatRate = num(biz().vatRate);
+  if (!d.lines.some(l => l.name || l.serviceId)) { toast("Add at least one service."); return; }
+  if (!$("#quick").hidden && $("#qc-name").value.trim()){
+    d.customerId = await put("customers", {name: $("#qc-name").value.trim(), phone: $("#qc-phone").value.trim(), email: $("#qc-email").value.trim(), address: $("#qc-address").value.trim(), postcode: $("#qc-postcode").value.trim().toUpperCase(), source: $("#qc-source").value, notes: ""});
+  }
+  if (!d.customerId) { toast("Choose or add a customer first."); return; }
+  delete d.quick;
+  d.lines = d.lines.filter(l => l.name || l.serviceId);
+  if (!d.lines.length) { toast("Add at least one service."); return; }
+  if (!d.number) d.number = await nextNumber("quote");
+  const id = await put("quotes", d);
+  toast("Quote " + d.number + " saved"); draft = null; go("quote", {id});
+}
+
+/* quote / invoice document */
+function docHTML(kind, rec){
+  const b = biz(), c = cust(rec.customerId), t = totals(rec);
+  const title = kind === "quote" ? "Quote" : "Invoice";
+  const rows = (rec.lines || []).map(l => { const a = lineAmount(l); const desc = lineText(l); return `<tr><td><b>${esc(l.name)}</b>${desc ? `<br><span style="color:#556;font-size:12.5px">${esc(desc)}</span>` : ""}${l.note ? `<br><span style="color:#556;font-size:12.5px">${esc(l.note)}</span>` : ""}</td><td class="r">${gbp(a.amount)}</td></tr>`; }).join("");
+  const bank = kind === "invoice" && (b.bankName || b.accountNo) ? `<div class="foot"><b>Pay by bank transfer</b>\n${esc(b.bankName)}${b.sortCode ? "\nSort code: " + esc(b.sortCode) : ""}${b.accountNo ? "\nAccount: " + esc(b.accountNo) : ""}\nReference: ${esc(rec.number)}</div>` : "";
+  return `<div class="paper">
+    <div class="ph"><div>${b.logo ? `<img src="${esc(b.logo)}" alt="${esc(b.name)} logo">` : `<h2 style="color:#14222b">${esc(b.name)}</h2>`}
+      <div class="meta" style="margin-top:6px;white-space:pre-line">${esc([b.address, b.phone, b.email, b.website].filter(Boolean).join("\n"))}</div></div>
+      <div style="text-align:right"><h1>${title}</h1><div class="meta mono">${esc(rec.number || "Not saved yet")}</div>
+      <div class="meta">${kind === "quote" ? "Date: " + fmtLong(rec.date) + "<br>Valid until: " + fmtLong(addDays(rec.date, num(b.validDays) || 30)) : "Issued: " + fmtLong(rec.date) + "<br>Due: " + fmtLong(rec.dueDate)}</div></div></div>
+    <div class="meta" style="margin-top:14px;white-space:pre-line"><b style="color:#14222b">${kind === "quote" ? "Prepared for" : "Bill to"}</b>\n${esc([c.name, c.address, c.postcode].filter(Boolean).join("\n"))}</div>
+    <table><thead><tr><th>Description</th><th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="tot"><span>Subtotal</span><span style="text-align:right">${gbp(t.sub)}</span>${t.disc ? `<span>Discount</span><span style="text-align:right">-${gbp(t.disc)}</span>` : ""}${t.vatOn ? `<span>VAT ${t.vatRate}%</span><span style="text-align:right">${gbp(t.vat)}</span>` : ""}<span class="g">Total</span><span class="g" style="text-align:right">${gbp(t.total)}</span></div>
+    <div class="foot">${t.vatOn ? (b.vatNo ? "VAT number: " + esc(b.vatNo) : "") : "No VAT charged."}</div>
+    ${rec.notes ? `<div class="foot">${esc(rec.notes)}</div>` : ""}
+    ${bank}
+    <div class="foot">${esc(kind === "quote" ? b.quoteNote : b.invoiceNote)}</div></div>`;
+}
+function shareText(kind, rec){
+  const b = biz(), c = cust(rec.customerId), t = totals(rec), first = (c.name || "").split(" ")[0];
+  const items = (rec.lines || []).map(l => "• " + l.name + " – " + gbp(lineAmount(l).amount)).join("\n");
+  if (kind === "quote") return `Hi ${first}, thanks for getting in touch with ${b.name}. Here's your quote (${rec.number}):\n\n${items}\n\nTotal: ${gbp(t.total)}${t.vatOn ? " inc. VAT" : ""}\n\nThe quote is valid for ${b.validDays} days. Just reply here to book a date.\n\n${b.owner || b.name}${b.phone ? "\n" + b.phone : ""}`;
+  return `Hi ${first}, here's your invoice ${rec.number} from ${b.name}.\n\n${items}\n\nTotal due: ${gbp(t.total)} by ${fmtLong(rec.dueDate)}.${b.accountNo ? `\n\nBank transfer to ${b.bankName}\nSort code ${b.sortCode}\nAccount ${b.accountNo}\nReference ${rec.number}` : ""}\n\nThank you!\n${b.owner || b.name}`;
+}
+function sendBar(kind, rec){
+  const c = cust(rec.customerId), txt = shareText(kind, rec);
+  const wa = c.phone ? `https://wa.me/${waNumber(c.phone)}?text=${encodeURIComponent(txt)}` : `https://wa.me/?text=${encodeURIComponent(txt)}`;
+  const mail = `mailto:${encodeURIComponent(c.email || "")}?subject=${encodeURIComponent((kind === "quote" ? "Your quote " : "Invoice ") + rec.number + " from " + biz().name)}&body=${encodeURIComponent(txt)}`;
+  return `<div class="row"><button class="btn" data-act="pdf" data-kind="${kind}" data-id="${rec.id}">Download PDF</button>
+    <a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp</a>
+    <a class="btn" href="${esc(mail)}">Email</a>
+    <button class="btn" data-act="copy" data-kind="${kind}" data-id="${rec.id}">Copy message</button></div>
+    <p class="hint">WhatsApp and Email open with the message written for you. Attach the PDF if you want them to have the full document.${c.email ? "" : " This customer has no email saved."}</p>`;
+}
+VIEWS.quote = function(){
+  const q = S.quotes[view.id]; if (!q) return `<div class="panel">This quote was deleted. <button class="btn sm" data-tab="quotes">Back to quotes</button></div>`;
+  const c = cust(q.customerId), inv = q.invoiceId && S.invoices[q.invoiceId];
+  const job = Object.values(S.jobs).find(j => j.quoteId === q.id);
+  return `<div class="head"><div><h1>${esc(q.number)} <span class="pill ${esc(q.status)}">${esc(q.status)}</span></h1><p><a href="#" data-open="customer" data-id="${q.customerId}">${esc(c.name)}</a> · ${gbp(totals(q).total)}${q.status === "sent" && q.followUpOn ? " · follow up " + fmtDate(q.followUpOn) : ""}</p></div>
+    <div class="row"><button class="btn" data-act="editQuote" data-id="${q.id}">Edit</button><button class="btn" data-act="dupQuote" data-id="${q.id}">Duplicate</button></div></div>
+  <section class="panel"><h3>What's next</h3>
+    <div class="row" style="margin-top:8px">
+    ${q.status === "draft" ? `<button class="btn primary" data-act="markSent" data-id="${q.id}">Mark as sent</button>` : ""}
+    ${q.status === "sent" ? `<button class="btn primary" data-act="accept" data-id="${q.id}">Customer accepted</button><button class="btn" data-act="snooze" data-id="${q.id}">Followed up, remind me again</button><button class="btn" data-act="decline" data-id="${q.id}">Declined</button>` : ""}
+    ${q.status === "accepted" && !job ? `<button class="btn primary" data-act="bookFromQuote" data-id="${q.id}">Book the job</button>` : ""}
+    ${job ? `<button class="btn" data-open="job" data-id="${job.id}">Job: ${fmtDate(job.date)}${job.time ? " " + esc(job.time) : ""}</button>` : ""}
+    ${q.status === "accepted" && !inv ? `<button class="btn" data-act="toInvoice" data-id="${q.id}">Turn into invoice</button>` : ""}
+    ${inv ? `<button class="btn" data-open="invoice" data-id="${inv.id}">Invoice ${esc(inv.number)} (${invStatus(inv)})</button>` : ""}
+    ${q.status === "declined" ? `<button class="btn" data-act="reopen" data-id="${q.id}">Reopen</button>` : ""}
+    <span class="spacer"></span><span id="delq"><button class="btn sm ghost danger" data-act="askDel" data-kind="quotes" data-id="${q.id}">Delete</button></span></div>
+    ${q.privateNotes ? `<p class="hint" style="margin-top:10px"><b>Private notes:</b> ${esc(q.privateNotes)}</p>` : ""}
+    <div id="bookbox"></div></section>
+  <section class="panel"><h3>Send to ${esc(c.name)}</h3>${sendBar("quote", q)}</section>
+  ${docHTML("quote", q)}`;
+};
+
+/* booking */
+function bookForm(opts){
+  return `<div class="fields" style="margin-top:12px">
+    <label class="f">Date<input type="date" id="b-date" value="${esc(opts.date || addDays(today(), 7))}"></label>
+    <label class="f">Start time<input type="time" id="b-time" value="${esc(opts.time || "09:00")}"></label>
+    <label class="f">Hours on site<input type="number" step="0.5" id="b-hours" value="${esc(opts.hours || 2)}"></label>
+    <label class="f">Repeat<select id="b-repeat">${[[0,"One-off"],[4,"Every 4 weeks"],[6,"Every 6 weeks"],[8,"Every 8 weeks"],[12,"Every 3 months"],[26,"Every 6 months"],[52,"Once a year"]].map(([v, l]) => `<option value="${v}" ${num(opts.repeatWeeks) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+  </div><div class="row" style="margin-top:12px"><button class="btn primary" data-act="${opts.act}" data-id="${opts.id || ""}">Book it</button></div>`;
+}
+async function createJob(base){
+  const id = await put("jobs", Object.assign({date: $("#b-date").value || today(), time: $("#b-time").value, hours: num($("#b-hours").value), repeatWeeks: num($("#b-repeat").value), done: false}, base));
+  toast("Booked for " + fmtDate(S.jobs[id].date));
+  return id;
+}
+
+/* customers */
+let cSearch = "";
+VIEWS.customers = function(){
+  const spend = {};
+  Object.values(S.invoices).forEach(i => { if (i.status === "paid") spend[i.customerId] = (spend[i.customerId] || 0) + totals(i).total; });
+  const list = Object.values(S.customers).filter(c => !cSearch || [c.name, c.phone, c.postcode, c.address, c.email].join(" ").toLowerCase().includes(cSearch.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
+  return `<div class="head"><div><h1>Customers</h1><p>${Object.keys(S.customers).length} on file</p></div><div class="row"><button class="btn" data-tab="importLeads">Import leads</button><button class="btn primary" data-act="newCustomer">New customer</button></div></div>
+  <div class="searchbar"><input type="search" id="csearch" placeholder="Search name, phone, postcode or street" value="${esc(cSearch)}"></div>
+  <section class="panel"><div class="list">${list.map(c => `<div class="item" data-open="customer" data-id="${c.id}"><div class="main"><div class="t">${esc(c.name)}</div><div class="d">${esc([c.address, c.postcode].filter(Boolean).join(", ") || "No address")}${c.phone ? " · " + esc(c.phone) : ""}</div></div><div class="amt">${spend[c.id] ? gbp(spend[c.id]) : ""}</div></div>`).join("") || `<div class="empty">No customers match.</div>`}</div></section>`;
+};
+VIEWS.customer = function(){
+  const c = S.customers[view.id]; if (!c) return `<div class="panel">This customer was deleted. <button class="btn sm" data-tab="customers">Back</button></div>`;
+  const qs = Object.values(S.quotes).filter(q => q.customerId === c.id).sort((a, b) => byDate(a, b, "date"));
+  const is = Object.values(S.invoices).filter(i => i.customerId === c.id).sort((a, b) => byDate(a, b, "date"));
+  const js = Object.values(S.jobs).filter(j => j.customerId === c.id).sort((a, b) => byDate(a, b, "date"));
+  const spent = is.filter(i => i.status === "paid").reduce((s, i) => s + totals(i).total, 0);
+  const owed = is.filter(i => i.status !== "paid").reduce((s, i) => s + totals(i).total, 0);
+  const next = js.filter(j => !j.done && j.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const maps = [c.address, c.postcode].filter(Boolean).join(", ");
+  return `<div class="head"><div><h1>${esc(c.name)}</h1><p>${c.source ? "Found you via " + esc(c.source) + " · " : ""}customer since ${fmtLong((c.createdAt || "").slice(0, 10))}</p></div>
+    <div class="row"><button class="btn" data-act="editCustomer" data-id="${c.id}">Edit</button><button class="btn primary" data-act="newQuote" data-cid="${c.id}">New quote</button></div></div>
+  <div class="stats"><div class="stat"><div class="k">Total paid</div><div class="v num">${gbp(spent)}</div></div><div class="stat"><div class="k">Owing</div><div class="v num">${gbp(owed)}</div></div><div class="stat"><div class="k">Next clean</div><div class="v" style="font-size:22px">${next ? fmtDate(next.date) : "None booked"}</div></div></div>
+  <div class="grid2">
+  <section class="panel"><h3>Details</h3><dl class="kv">
+    <dt>Phone</dt><dd>${phoneLink(c.phone) || "–"}</dd><dt>Email</dt><dd>${esc(c.email) || "–"}</dd>
+    <dt>Address</dt><dd>${esc(maps) || "–"}${maps ? ` · <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(maps)}" target="_blank" rel="noopener">Map</a>` : ""}</dd>
+    ${c.service ? `<dt>Asked for</dt><dd>${esc(c.service)}</dd>` : ""}
+    <dt>Notes</dt><dd style="white-space:pre-wrap">${esc(c.notes) || "–"}</dd></dl>
+    ${c.stage === "lead" && !qs.length ? `<div class="row" style="margin-top:12px"><span class="pill sent">New lead</span><span class="hint">Stays on the Today screen until you quote it.</span><span class="spacer"></span><button class="btn sm" data-act="closeLead" data-id="${c.id}">Not interested</button></div>` : ""}
+    <div class="row" style="margin-top:12px"><span class="spacer"></span><span id="delc"><button class="btn sm ghost danger" data-act="askDel" data-kind="customers" data-id="${c.id}">Delete customer</button></span></div></section>
+  <section class="panel"><div class="row"><h3>Jobs</h3><span class="spacer"></span><button class="btn sm" data-act="bookRepeat" data-id="${c.id}">Book a clean</button></div><div id="bookbox"></div>
+    <div class="list">${js.map(jobRow).join("") || `<div class="empty">No jobs yet.</div>`}</div></section>
+  </div>
+  <div class="grid2">
+  <section class="panel"><h3>Quotes</h3><div class="list">${qs.map(quoteRow).join("") || `<div class="empty">No quotes yet.</div>`}</div></section>
+  <section class="panel"><h3>Invoices</h3><div class="list">${is.map(invoiceRow).join("") || `<div class="empty">No invoices yet.</div>`}</div></section></div>`;
+};
+let cdraft = null;
+VIEWS.customerEdit = function(){
+  const c = cdraft;
+  return `<div class="head"><div><h1>${c.id ? "Edit customer" : "New customer"}</h1></div><div class="row"><button class="btn" data-act="cancelCustomer">Cancel</button><button class="btn primary" data-act="saveCustomer">Save</button></div></div>
+  <section class="panel"><div class="fields">
+    <label class="f">Name<input type="text" id="c-name" value="${esc(c.name)}" autocomplete="off"></label>
+    <label class="f">Phone<input type="tel" id="c-phone" value="${esc(c.phone)}"></label>
+    <label class="f">Email<input type="email" id="c-email" value="${esc(c.email)}"></label>
+    <label class="f">How they found you<select id="c-source">${SOURCES.map(s => `<option ${c.source === s ? "selected" : ""}>${s}</option>`).join("")}</select></label>
+    <label class="f wide">Address<input type="text" id="c-address" value="${esc(c.address)}"></label>
+    <label class="f">Postcode<input type="text" id="c-postcode" value="${esc(c.postcode)}"></label>
+    <label class="f wide">Service they asked for<input type="text" id="c-service" value="${esc(c.service)}" placeholder="e.g. Driveway clean"></label>
+    <label class="f wide">Notes<textarea id="c-notes" placeholder="Gate code, dog, where to park, outside tap…">${esc(c.notes)}</textarea></label>
+  </div></section>`;
+};
+
+/* lead import (Meta Business Suite > Leads Center / Instant Form "Download" CSV) */
+let importRows = null, importName = "";
+const META_STD = new Set(["id","created_time","ad_id","ad_name","adset_id","adset_name","campaign_id","campaign_name","form_id","form_name","is_organic","platform","lead_status","inbox_url"]);
+function parseDelimited(text){
+  text = text.replace(/^\uFEFF/, "");
+  const first = text.split(/\r?\n/)[0] || "";
+  const delim = (first.match(/\t/g) || []).length > (first.match(/,/g) || []).length ? "\t" : ",";
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if (q){ if (ch === '"'){ if (text[i + 1] === '"'){ cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === delim){ row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r"){ if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell || row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim()));
+}
+function decodeFile(buf){
+  const b = new Uint8Array(buf);
+  if (b[0] === 0xFF && b[1] === 0xFE) return new TextDecoder("utf-16le").decode(buf);
+  if (b[0] === 0xFE && b[1] === 0xFF) return new TextDecoder("utf-16be").decode(buf);
+  return new TextDecoder("utf-8").decode(buf);
+}
+const cleanVal = v => String(v || "").trim().replace(/^[a-z]:/, "");
+function mapLeads(rows){
+  const head = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g, "_"));
+  const find = (...keys) => head.findIndex(h => keys.includes(h));
+  const ix = {id: find("id","lead_id"), time: find("created_time","date","created"), name: find("full_name","name","full name"), first: find("first_name"), last: find("last_name"),
+    phone: find("phone_number","phone","mobile","telephone"), email: find("email","email_address"), street: find("street_address","address","street"), city: find("city","town"),
+    post: find("post_code","postcode","zip_code","zip","postal_code"), platform: find("platform")};
+  const used = new Set(Object.values(ix).filter(i => i >= 0));
+  const extra = head.map((h, i) => i).filter(i => !used.has(i) && !META_STD.has(head[i]));
+  const nice = h => h.replace(/_/g, " ").replace(/\?$/, "").replace(/^./, c => c.toUpperCase());
+  return rows.slice(1).map(r => {
+    const g = i => i >= 0 ? cleanVal(r[i]) : "";
+    let name = g(ix.name) || [g(ix.first), g(ix.last)].filter(Boolean).join(" ");
+    const answers = extra.map(i => [head[i], cleanVal(r[i])]).filter(([, v]) => v);
+    const svcAns = answers.find(([h]) => /service|clean|job|work|need|interest|looking/.test(h));
+    const service = (svcAns ? svcAns[1] : (answers[0] || [])[1] || "").replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+    const others = answers.filter(a => a !== svcAns && (svcAns || a !== answers[0]));
+    const plat = g(ix.platform).toLowerCase();
+    return {leadId: g(ix.id), leadDate: (g(ix.time) || "").slice(0, 10), name: name || "Unnamed lead", phone: g(ix.phone).replace(/^\+44\s?/, "0").replace(/^p:/, ""),
+      email: g(ix.email), address: [g(ix.street), g(ix.city)].filter(Boolean).join(", "), postcode: g(ix.post).toUpperCase(), service,
+      notes: others.map(([h, v]) => nice(h) + ": " + v.replace(/_/g, " ")).join("\n"), source: plat === "ig" || plat.includes("insta") ? "Instagram ad" : "Facebook ad"};
+  });
+}
+function isDuplicate(l){
+  const digits = v => String(v || "").replace(/\D/g, "").slice(-10);
+  return Object.values(S.customers).some(c => (l.leadId && c.leadId === l.leadId) || (l.phone && digits(c.phone) && digits(c.phone) === digits(l.phone)) || (l.email && c.email && c.email.toLowerCase() === l.email.toLowerCase()));
+}
+VIEWS.importLeads = function(){
+  const fresh = importRows ? importRows.filter(l => !isDuplicate(l)) : [];
+  return `<div class="head"><div><h1>Import leads</h1><p>Bring in leads from your Facebook and Instagram lead ads.</p></div><button class="btn" data-tab="customers">Back</button></div>
+  <section class="panel"><h3>1. Download your leads from Meta</h3>
+    <p class="hint" style="font-size:14px">In <a href="https://business.facebook.com/latest/leads_center" target="_blank" rel="noopener">Meta Business Suite</a>, open <b>All tools → Leads Center</b> (or your Instant Form under <b>Forms library</b>) and choose <b>Download</b> as CSV. Any file with name, phone, email and address columns works too.</p>
+    <h3 style="margin-top:14px">2. Choose the file</h3>
+    <div class="row" style="margin-top:8px"><input type="file" id="lead-file" accept=".csv,.tsv,.txt,text/csv"></div>
+    <p class="hint">The service they asked for is taken from your form's custom question (anything mentioning service, clean or job). Other answers go into notes. Leads already in your customers, matched by phone, email or lead ID, are skipped.</p></section>
+  ${importRows ? `<section class="panel"><div class="row"><h3>${esc(importName)}: ${importRows.length} lead${importRows.length === 1 ? "" : "s"}, ${fresh.length} new</h3><span class="spacer"></span>${fresh.length ? `<button class="btn primary" data-act="doImport">Import ${fresh.length} new lead${fresh.length === 1 ? "" : "s"}</button>` : ""}</div>
+    <div class="list">${importRows.map(l => `<div class="item" style="cursor:default"><div class="main"><div class="t">${esc(l.name)} ${isDuplicate(l) ? '<span class="pill">Already saved</span>' : '<span class="pill sent">New</span>'}</div><div class="d">${esc(l.service || "No service given")} · ${esc(l.phone)} · ${esc([l.address, l.postcode].filter(Boolean).join(", "))}</div></div><div class="amt">${fmtDate(l.leadDate)}</div></div>`).join("") || `<div class="empty">No leads found in that file. Check it's the CSV download from Meta.</div>`}</div></section>` : ""}`;
+};
+
+/* invoices */
+let iFilter = "all";
+VIEWS.invoices = function(){
+  const all = Object.values(S.invoices);
+  const list = all.filter(i => iFilter === "all" || invStatus(i) === iFilter).sort((a, b) => byDate(a, b, "date") || byDate(a, b, "number"));
+  const owed = all.filter(i => i.status !== "paid").reduce((s, i) => s + totals(i).total, 0);
+  return `<div class="head"><div><h1>Invoices</h1><p>${gbp(owed)} waiting to be paid</p></div><button class="btn primary" data-act="newInvoice">New invoice</button></div>
+  <div class="seg">${["all","unpaid","overdue","paid"].map(f => `<button data-if="${f}" aria-pressed="${iFilter === f}">${f[0].toUpperCase() + f.slice(1)}</button>`).join("")}</div>
+  <section class="panel"><div class="list">${list.map(invoiceRow).join("") || `<div class="empty">No invoices here. Turn an accepted quote into an invoice, or start one from scratch.</div>`}</div></section>`;
+};
+VIEWS.invoice = function(){
+  const i = S.invoices[view.id]; if (!i) return `<div class="panel">This invoice was deleted. <button class="btn sm" data-tab="invoices">Back</button></div>`;
+  const c = cust(i.customerId), st = invStatus(i);
+  return `<div class="head"><div><h1>${esc(i.number)} <span class="pill ${st}">${st}</span></h1><p><a href="#" data-open="customer" data-id="${i.customerId}">${esc(c.name)}</a> · ${gbp(totals(i).total)} · due ${fmtDate(i.dueDate)}</p></div>
+    <div class="row"><button class="btn" data-act="editInvoice" data-id="${i.id}">Edit</button></div></div>
+  <section class="panel"><div class="row">
+    ${i.status !== "paid" ? `<label class="f" style="flex-direction:row;align-items:center;gap:8px">Paid on <input type="date" id="paidOn" value="${today()}" style="width:auto"></label><select id="paidBy" style="width:auto"><option>Bank transfer</option><option>Cash</option><option>Card</option><option>Cheque</option></select><button class="btn primary" data-act="markPaid" data-id="${i.id}">Mark as paid</button>` : `<span>Paid ${fmtLong(i.paidOn)}${i.paidBy ? " by " + esc(i.paidBy) : ""}</span><button class="btn sm" data-act="markUnpaid" data-id="${i.id}">Mark unpaid</button>`}
+    ${i.quoteId && S.quotes[i.quoteId] ? `<button class="btn" data-open="quote" data-id="${i.quoteId}">From quote ${esc(S.quotes[i.quoteId].number)}</button>` : ""}
+    <span class="spacer"></span><span id="deli"><button class="btn sm ghost danger" data-act="askDel" data-kind="invoices" data-id="${i.id}">Delete</button></span></div></section>
+  <section class="panel"><h3>Send to ${esc(c.name)}</h3>${sendBar("invoice", i)}</section>
+  ${docHTML("invoice", i)}`;
+};
+function startInvoice(from){
+  const b = biz();
+  draft = Object.assign({customerId: "", date: today(), dueDate: addDays(today(), num(b.paymentDays) || 7), status: "unpaid", lines: [], discount: 0, notes: "", vatOn: b.vatOn, vatRate: b.vatRate, kind: "invoice"}, from ? JSON.parse(JSON.stringify(from)) : {});
+  draft.kind = "invoice";
+  if (!draft.lines.length) draft.lines.push(newLine(null));
+  go("invoiceEdit");
+}
+VIEWS.invoiceEdit = function(){
+  const d = draft, b = biz();
+  return `<div class="head"><div><h1>${d.id ? "Edit " + esc(d.number) : "New invoice"}</h1></div>
+    <div class="row"><button class="btn" data-act="cancelInvoice">Cancel</button><button class="btn primary" data-act="saveInvoice">Save invoice</button></div></div>
+  <section class="panel"><div class="fields">
+    <label class="f">Customer<select id="q-customer">${customerOptions(d.customerId)}</select></label>
+    <label class="f">Invoice date<input type="date" id="q-date" value="${esc(d.date)}"></label>
+    <label class="f">Due date<input type="date" id="q-due" value="${esc(d.dueDate)}"></label>
+  </div></section>
+  <section class="panel"><h2>Work done</h2><div style="display:flex;flex-direction:column;gap:10px" id="lines">${d.lines.map(lineHTML).join("")}</div>
+    <div class="row" style="margin-top:12px"><button class="btn" data-act="addLine">+ Add service</button></div></section>
+  <section class="panel"><div class="row" style="align-items:flex-start;gap:24px">
+    <div class="fields" style="flex:1;min-width:240px">
+      <label class="f">Discount (£)<input type="number" step="0.01" id="q-discount" value="${esc(d.discount || "")}" placeholder="0"></label>
+      <label class="f check" style="flex-direction:row;align-self:end"><input type="checkbox" id="q-vat" ${d.vatOn ? "checked" : ""}> Add VAT at ${esc(b.vatRate)}%</label>
+      <label class="f wide">Notes for the customer<textarea id="q-notes">${esc(d.notes)}</textarea></label></div>
+    <div class="totals" id="q-totals">${totalsHTML(d)}</div></div></section>`;
+};
+async function saveInvoice(){
+  const d = draft;
+  d.customerId = $("#q-customer").value; d.date = $("#q-date").value || today(); d.dueDate = $("#q-due").value || addDays(d.date, num(biz().paymentDays));
+  d.discount = num($("#q-discount").value); d.notes = $("#q-notes").value; d.vatOn = $("#q-vat").checked; d.vatRate = num(biz().vatRate);
+  if (!d.customerId) { toast("Choose a customer first."); return; }
+  d.lines = d.lines.filter(l => l.name || l.serviceId);
+  if (!d.lines.length) { toast("Add at least one line."); return; }
+  if (!d.number) d.number = await nextNumber("invoice");
+  delete d.kind;
+  const id = await put("invoices", d);
+  if (d.quoteId && S.quotes[d.quoteId]) await put("quotes", Object.assign({}, S.quotes[d.quoteId], {invoiceId: id}));
+  if (d.jobId && S.jobs[d.jobId]) await put("jobs", Object.assign({}, S.jobs[d.jobId], {invoiceId: id}));
+  toast("Invoice " + d.number + " saved"); draft = null; go("invoice", {id});
+}
+
+/* calendar */
+let calMonth = today().slice(0, 7), calSel = today();
+function eventsOn(d){
+  const ev = [];
+  Object.values(S.jobs).filter(j => j.date === d).sort((a, b) => (a.time || "").localeCompare(b.time || "")).forEach(j => ev.push({cls: "job", label: (j.time ? j.time + " " : "") + cust(j.customerId).name, open: "job", id: j.id, done: j.done}));
+  Object.values(S.quotes).filter(q => q.status === "sent" && q.followUpOn === d).forEach(q => ev.push({cls: "fu", label: "Follow up " + cust(q.customerId).name, open: "quote", id: q.id}));
+  Object.values(S.invoices).filter(i => i.status !== "paid" && i.dueDate === d).forEach(i => ev.push({cls: "inv", label: "Due " + i.number, open: "invoice", id: i.id}));
+  return ev;
+}
+VIEWS.calendar = function(){
+  const [y, m] = calMonth.split("-").map(Number);
+  const first = new Date(y, m - 1, 1), startDow = (first.getDay() + 6) % 7;
+  const start = new Date(y, m - 1, 1 - startDow);
+  const cells = [];
+  for (let k = 0; k < 42; k++){
+    const d = new Date(start); d.setDate(start.getDate() + k); const s = iso(d);
+    if (k >= 35 && d.getMonth() !== m - 1) break;
+    const ev = eventsOn(s);
+    cells.push(`<button class="day ${d.getMonth() !== m - 1 ? "out" : ""} ${s === today() ? "today" : ""} ${s === calSel ? "sel" : ""}" data-day="${s}" aria-label="${fmtLong(s)}, ${ev.length} items"><span class="dn">${d.getDate()}</span>${ev.slice(0, 3).map(e => `<span class="ev ${e.cls}" ${e.done ? 'style="text-decoration:line-through;opacity:.6"' : ""}>${esc(e.label)}</span>`).join("")}${ev.length > 3 ? `<span class="dn">+${ev.length - 3}</span>` : ""}</button>`);
+  }
+  const sel = eventsOn(calSel);
+  return `<div class="head"><div><h1>${first.toLocaleDateString("en-GB", {month: "long", year: "numeric"})}</h1><p>Jobs, quote follow-ups and invoice due dates</p></div>
+    <div class="row"><button class="btn" data-cal="-1" aria-label="Previous month">‹</button><button class="btn" data-cal="0">Today</button><button class="btn" data-cal="1" aria-label="Next month">›</button><button class="btn primary" data-act="newJob">Book a job</button></div></div>
+  <section class="panel"><div class="cal">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => `<div class="dow">${d}</div>`).join("")}${cells.join("")}</div>
+    <div class="row hint" style="margin-top:10px"><span class="pill job">Job</span><span class="pill due">Follow-up</span><span class="pill overdue">Invoice due</span></div></section>
+  <section class="panel"><h3>${fmtLong(calSel)}</h3><div class="list">${sel.length ? sel.map(e => e.open === "job" ? jobRow(S.jobs[e.id]) : `<div class="item" data-open="${e.open}" data-id="${e.id}"><div class="main"><div class="t">${esc(e.label)}</div></div><span class="pill ${e.cls === "fu" ? "due" : "overdue"}">${e.cls === "fu" ? "Follow-up" : "Invoice"}</span></div>`).join("") : `<div class="empty">Nothing on this day.</div>`}</div></section>`;
+};
+let jdraft = null;
+VIEWS.job = function(){
+  const j = jdraft; const isNew = !j.id;
+  const c = S.customers[j.customerId];
+  const gcal = c ? gcalLink(j) : "";
+  return `<div class="head"><div><h1>${isNew ? "Book a job" : esc(cust(j.customerId).name)}</h1><p>${isNew ? "Add a clean to the calendar." : fmtLong(j.date) + (j.time ? " at " + esc(j.time) : "")}</p></div>
+    <div class="row">${isNew ? "" : `<a class="btn" href="${esc(gcal)}" target="_blank" rel="noopener">Add to Google Calendar</a>`}<button class="btn" data-act="cancelJob">Back</button><button class="btn primary" data-act="saveJob">Save</button></div></div>
+  <section class="panel"><div class="fields">
+    <label class="f">Customer<select id="j-customer">${customerOptions(j.customerId)}</select></label>
+    <label class="f">What's the job<input type="text" id="j-title" value="${esc(j.title)}" placeholder="e.g. Window clean, gutters"></label>
+    <label class="f">Price (£)<input type="number" step="0.01" id="j-price" value="${esc(j.price)}"></label>
+    <label class="f">Date<input type="date" id="j-date" value="${esc(j.date)}"></label>
+    <label class="f">Start time<input type="time" id="j-time" value="${esc(j.time)}"></label>
+    <label class="f">Hours on site<input type="number" step="0.5" id="j-hours" value="${esc(j.hours)}"></label>
+    <label class="f">Repeat<select id="j-repeat">${[[0,"One-off"],[4,"Every 4 weeks"],[6,"Every 6 weeks"],[8,"Every 8 weeks"],[12,"Every 3 months"],[26,"Every 6 months"],[52,"Once a year"]].map(([v, l]) => `<option value="${v}" ${num(j.repeatWeeks) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+    <label class="f wide">Job notes<textarea id="j-notes">${esc(j.notes)}</textarea></label></div>
+    ${c ? `<p class="hint" style="margin-top:10px">${esc([c.address, c.postcode].filter(Boolean).join(", "))} ${phoneLink(c.phone)}</p>` : ""}</section>
+  ${isNew ? "" : `<section class="panel"><div class="row">
+    ${j.done ? `<span class="pill done">Done</span><button class="btn sm" data-act="undoJob">Not done</button>` : `<button class="btn primary" data-act="doneJob">Mark done${num(j.repeatWeeks) ? " and book next" : ""}</button>`}
+    ${j.invoiceId && S.invoices[j.invoiceId] ? `<button class="btn" data-open="invoice" data-id="${j.invoiceId}">Invoice ${esc(S.invoices[j.invoiceId].number)}</button>` : `<button class="btn" data-act="invoiceJob">Invoice this job</button>`}
+    ${j.quoteId && S.quotes[j.quoteId] ? `<button class="btn" data-open="quote" data-id="${j.quoteId}">Quote ${esc(S.quotes[j.quoteId].number)}</button>` : ""}
+    <span class="spacer"></span><span id="delj"><button class="btn sm ghost danger" data-act="askDel" data-kind="jobs" data-id="${j.id}">Delete</button></span></div></section>`}`;
+};
+function gcalLink(j){
+  const c = cust(j.customerId);
+  const st = (j.date || today()).replace(/-/g, "") + "T" + (j.time || "09:00").replace(":", "") + "00";
+  const endD = new Date(parseISO(j.date || today())); const [hh, mm] = (j.time || "09:00").split(":").map(Number); endD.setHours(hh, mm + Math.round(num(j.hours || 2) * 60));
+  const en = iso(endD).replace(/-/g, "") + "T" + pad(endD.getHours()) + pad(endD.getMinutes()) + "00";
+  return "https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + encodeURIComponent((j.title || "Clean") + " – " + c.name) + "&dates=" + st + "/" + en + "&details=" + encodeURIComponent((c.phone || "") + "\n" + (j.notes || "")) + "&location=" + encodeURIComponent([c.address, c.postcode].filter(Boolean).join(", "));
+}
+function readJobForm(){
+  Object.assign(jdraft, {customerId: $("#j-customer").value, title: $("#j-title").value.trim(), price: num($("#j-price").value), date: $("#j-date").value || today(), time: $("#j-time").value, hours: num($("#j-hours").value), repeatWeeks: num($("#j-repeat").value), notes: $("#j-notes").value});
+}
+
+/* business */
+VIEWS.business = function(){
+  const b = biz();
+  const svcs = Object.values(S.services).sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+  return `<div class="head"><div><h1>Business</h1><p>Your details, prices and backups. These appear on every quote and invoice.</p></div><button class="btn primary" data-act="saveBiz">Save details</button></div>
+  <section class="panel"><h2>Your details</h2><div class="fields">
+    <label class="f">Business name<input type="text" id="b-name" value="${esc(b.name)}"></label>
+    <label class="f">Your name<input type="text" id="b-owner" value="${esc(b.owner)}"></label>
+    <label class="f">Phone<input type="tel" id="b-phone" value="${esc(b.phone)}"></label>
+    <label class="f">Email<input type="email" id="b-email" value="${esc(b.email)}"></label>
+    <label class="f">Website<input type="text" id="b-website" value="${esc(b.website)}"></label>
+    <label class="f wide">Address<textarea id="b-address" style="min-height:56px">${esc(b.address)}</textarea></label>
+    <label class="f">Logo (PNG or JPG, under 150 KB)<input type="file" id="b-logo" accept="image/png,image/jpeg"></label>
+    <div class="row">${b.logo ? `<img src="${esc(b.logo)}" alt="Current logo" style="max-height:48px"><button class="btn sm ghost danger" data-act="clearLogo">Remove logo</button>` : `<span class="hint">No logo yet. Your business name shows instead.</span>`}</div>
+  </div></section>
+  <section class="panel"><h2>Getting paid</h2><div class="fields">
+    <label class="f">Bank / account name<input type="text" id="b-bank" value="${esc(b.bankName)}" placeholder="e.g. CTM Exterior Cleaning, Starling"></label>
+    <label class="f">Sort code<input type="text" id="b-sort" value="${esc(b.sortCode)}" placeholder="00-00-00"></label>
+    <label class="f">Account number<input type="text" id="b-acc" value="${esc(b.accountNo)}"></label>
+    <label class="f">Payment terms (days)<input type="number" id="b-pay" value="${esc(b.paymentDays)}"></label>
+    <label class="f check" style="flex-direction:row;align-self:end"><input type="checkbox" id="b-vaton" ${b.vatOn ? "checked" : ""}> I'm VAT registered</label>
+    <label class="f">VAT rate (%)<input type="number" id="b-vatrate" value="${esc(b.vatRate)}"></label>
+    <label class="f">VAT number<input type="text" id="b-vatno" value="${esc(b.vatNo)}"></label>
+  </div></section>
+  <section class="panel"><h2>Quotes and follow-ups</h2><div class="fields">
+    <label class="f">Follow up sent quotes after (days)<input type="number" id="b-fu" value="${esc(b.followUpDays)}"></label>
+    <label class="f">Quotes valid for (days)<input type="number" id="b-valid" value="${esc(b.validDays)}"></label>
+    <label class="f wide">Note at the bottom of quotes<textarea id="b-qnote">${esc(b.quoteNote)}</textarea></label>
+    <label class="f wide">Note at the bottom of invoices<textarea id="b-inote">${esc(b.invoiceNote)}</textarea></label>
+  </div><div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-act="saveBiz">Save details</button></div></section>
+  <section class="panel"><div class="row"><h2>Services and prices</h2><span class="spacer"></span><button class="btn sm" data-act="addSvc">+ Add service</button></div>
+    <p class="hint">Price by m², by metre, per item, as a fixed price, or by property type. A minimum charge kicks in when a small job would come in under it.</p>
+    <div id="svcs">${svcs.length ? svcs.map(svcHTML).join("") : `<div class="empty">No services yet. <button class="btn sm" data-act="starter">Load starter prices</button> and adjust them to yours.</div>`}</div>
+    ${svcs.length ? `<div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn primary" data-act="saveSvcs">Save prices</button></div>` : ""}</section>
+  <section class="panel"><h2>Backup</h2><p class="hint">Download everything (customers, quotes, invoices, jobs and prices) as a file you can keep, or your customer list as a spreadsheet.</p>
+    <div class="row" style="margin-top:8px"><button class="btn" data-act="backup">Download full backup</button><button class="btn" data-act="csv">Download customers (CSV)</button></div>
+    <p class="hint" style="margin-top:12px">Restore from a backup file. Records in the file are added or updated; nothing else is deleted.</p>
+    <div class="row" style="margin-top:6px"><input type="file" id="restore-file" accept=".json,application/json"></div></section>
+  <section class="panel"><div class="row"><span>Signed in as <b>${esc(me ? me.email : "")}</b></span><span class="spacer"></span><button class="btn" data-act="signOut">Sign out</button></div></section>`;
+};
+function svcHTML(s){
+  const p = s.prop || {};
+  return `<div class="svc" data-svc="${s.id}">
+    <label class="f nm">Service<input type="text" data-s="name" value="${esc(s.name)}"></label>
+    <label class="f">Priced<select data-s="unit">${Object.entries(UNITS).map(([k, v]) => `<option value="${k}" ${s.unit === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+    ${s.unit === "property" ? `<span></span>` : `<label class="f">${s.unit === "fixed" ? "Price" : "Rate"} (£)<input type="number" step="0.01" data-s="rate" value="${esc(s.rate)}"></label>`}
+    <label class="f">Minimum (£)<input type="number" step="0.01" data-s="min" value="${esc(s.min || "")}" placeholder="none"></label>
+    <span id="dels-${s.id}"><button class="btn sm ghost danger" data-act="askDel" data-kind="services" data-id="${s.id}">Remove</button></span>
+    ${s.unit === "property" ? `<div class="prop">${PROPS.map(([k, v]) => `<label class="f">${v} (£)<input type="number" step="0.01" data-p="${k}" value="${esc(p[k] ?? "")}"></label>`).join("")}</div>` : ""}
+  </div>`;
+}
+function readSvcs(){
+  document.querySelectorAll("[data-svc]").forEach(el => {
+    const s = S.services[el.dataset.svc]; if (!s) return;
+    el.querySelectorAll("[data-s]").forEach(i => { s[i.dataset.s] = i.dataset.s === "name" || i.dataset.s === "unit" ? i.value : num(i.value); });
+    const p = Object.assign({}, s.prop || {}); el.querySelectorAll("[data-p]").forEach(i => { p[i.dataset.p] = num(i.value); }); s.prop = p;
+  });
+}
+const STARTER = [
+  ["Window cleaning (outside)","property",0,0,{terraced:15,semi:20,detached:28,bungalow:18}],
+  ["Gutter clearing","property",0,0,{terraced:60,semi:75,detached:110,bungalow:65}],
+  ["Fascia, soffit and gutter clean","property",0,0,{terraced:90,semi:120,detached:180,bungalow:100}],
+  ["Conservatory clean","fixed",95,0,null],
+  ["Driveway pressure wash","m2",4.5,120,null],
+  ["Patio clean","m2",5,100,null],
+  ["Re-sanding (kiln-dried sand)","m2",2,40,null],
+  ["Patio / driveway sealing","m2",4,80,null],
+  ["Render softwash","m2",6,250,null],
+  ["Roof moss removal and biocide","m2",8,350,null],
+  ["Decking clean","m2",5,90,null],
+  ["Wall / fence clean","m",3,60,null],
+  ["Solar panel clean","item",6,45,null],
+  ["Bin clean","item",8,0,null]
+];
+
+/* PDF */
+async function makePDF(kind, rec){
+  if (!window.jspdf) { toast("The PDF tool didn't load. Reload the page and try again."); return; }
+  const {jsPDF} = window.jspdf; const doc = new jsPDF({unit: "mm", format: "a4"});
+  const b = biz(), c = cust(rec.customerId), t = totals(rec), W = 210, M = 16;
+  let y = M;
+  if (b.logo){ try { const fmt = b.logo.indexOf("image/png") > -1 ? "PNG" : "JPEG"; const p = doc.getImageProperties(b.logo); const h = 20, w = Math.min(60, p.width / p.height * h); doc.addImage(b.logo, fmt, M, y, w, h); } catch (e) { doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text(b.name, M, y + 8); } }
+  else { doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text(b.name, M, y + 8); }
+  doc.setFont("helvetica", "bold"); doc.setFontSize(24); doc.text(kind === "quote" ? "QUOTE" : "INVOICE", W - M, y + 8, {align: "right"});
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+  const metaR = [rec.number, kind === "quote" ? "Date: " + fmtLong(rec.date) : "Issued: " + fmtLong(rec.date), kind === "quote" ? "Valid until: " + fmtLong(addDays(rec.date, num(b.validDays) || 30)) : "Due: " + fmtLong(rec.dueDate)];
+  doc.text(metaR, W - M, y + 15, {align: "right"});
+  const from = [b.address, b.phone, b.email, b.website].filter(Boolean).join("\n").split("\n");
+  doc.text(from, M, y + 26);
+  y = Math.max(y + 26 + from.length * 4.5, y + 34) + 2;
+  doc.setDrawColor(20, 34, 43); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 8;
+  doc.setFont("helvetica", "bold"); doc.text(kind === "quote" ? "Prepared for" : "Bill to", M, y); doc.setFont("helvetica", "normal");
+  const to = [c.name, c.address, c.postcode].filter(Boolean); doc.text(to, M, y + 5); y += 5 + to.length * 4.5 + 4;
+  const body = (rec.lines || []).map(l => { const d = [lineText(l), l.note].filter(Boolean).join("\n"); return [l.name + (d ? "\n" + d : ""), gbp(lineAmount(l).amount)]; });
+  doc.autoTable({startY: y, head: [["Description", "Amount"]], body, margin: {left: M, right: M}, theme: "plain",
+    headStyles: {fontStyle: "bold", textColor: [80, 90, 100], fontSize: 9, lineWidth: {bottom: 0.3}, lineColor: [200, 205, 210]},
+    bodyStyles: {fontSize: 10, cellPadding: 2.5, lineWidth: {bottom: 0.2}, lineColor: [225, 230, 233]}, columnStyles: {1: {halign: "right", cellWidth: 35}}});
+  y = doc.lastAutoTable.finalY + 6;
+  const rows = [["Subtotal", gbp(t.sub)]]; if (t.disc) rows.push(["Discount", "-" + gbp(t.disc)]); if (t.vatOn) rows.push(["VAT " + t.vatRate + "%", gbp(t.vat)]);
+  rows.forEach(([k, v]) => { doc.text(k, W - M - 60, y); doc.text(v, W - M, y, {align: "right"}); y += 5.5; });
+  doc.setLineWidth(0.6); doc.line(W - M - 60, y - 2, W - M, y - 2); y += 4; doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+  doc.text("Total", W - M - 60, y); doc.text(gbp(t.total), W - M, y, {align: "right"}); doc.setFont("helvetica", "normal"); doc.setFontSize(10); y += 10;
+  const foot = [];
+  foot.push(t.vatOn ? (b.vatNo ? "VAT number: " + b.vatNo : "") : "No VAT charged.");
+  if (rec.notes) foot.push("", rec.notes);
+  if (kind === "invoice" && (b.bankName || b.accountNo)) foot.push("", "Pay by bank transfer", b.bankName, b.sortCode ? "Sort code: " + b.sortCode : "", b.accountNo ? "Account: " + b.accountNo : "", "Reference: " + rec.number);
+  foot.push("", kind === "quote" ? b.quoteNote : b.invoiceNote);
+  const lines = doc.splitTextToSize(foot.filter(v => v != null).join("\n"), W - 2 * M);
+  if (y + lines.length * 4.5 > 285) { doc.addPage(); y = M; }
+  doc.text(lines, M, y);
+  const blob = doc.output("blob");
+  await saveFile((kind === "quote" ? "Quote " : "Invoice ") + rec.number + " - " + c.name + ".pdf", blob);
+}
+async function saveFile(filename, data){
+  const blob = data instanceof Blob ? data : new Blob([data], {type: filename.endsWith(".csv") ? "text/csv" : filename.endsWith(".json") ? "application/json" : "application/octet-stream"});
+  const file = new File([blob], filename, {type: blob.type || "application/pdf"});
+  if (filename.endsWith(".pdf") && navigator.canShare && navigator.canShare({files: [file]}) && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    try { await navigator.share({files: [file], title: filename}); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000); toast("Saved " + filename);
+}
+
+/* ---------- events ---------- */
+let pendingDel = null;
+document.addEventListener("click", async ev => {
+  const el = ev.target.closest("[data-tab],[data-open],[data-act],[data-qf],[data-if],[data-cal],[data-day]");
+  if (!el) return;
+  if (el.tagName === "A" && el.getAttribute("href") && el.getAttribute("href") !== "#" && !el.dataset.open) return;
+  if (el.dataset.tab) { ev.preventDefault(); return go(el.dataset.tab); }
+  if (el.dataset.qf) { qFilter = el.dataset.qf; return render(); }
+  if (el.dataset.if) { iFilter = el.dataset.if; return render(); }
+  if (el.dataset.cal) { const d = el.dataset.cal; if (d === "0") { calMonth = today().slice(0, 7); calSel = today(); } else { const [y, m] = calMonth.split("-").map(Number); const n = new Date(y, m - 1 + Number(d), 1); calMonth = iso(n).slice(0, 7); } return render(); }
+  if (el.dataset.day) { calSel = el.dataset.day; return render(); }
+  if (el.dataset.open) {
+    ev.preventDefault();
+    const id = el.dataset.id, o = el.dataset.open;
+    if (o === "job") { jdraft = Object.assign({}, S.jobs[id]); return go("job"); }
+    return go(o, {id});
+  }
+  const act = el.dataset.act, id = el.dataset.id;
+  try { await ACTIONS[act] && ACTIONS[act](el, id, ev); } catch (e) { console.warn(e); }
+});
+document.addEventListener("input", ev => {
+  const t = ev.target;
+  if (t.id === "qsearch") { qSearch = t.value; const pos = t.selectionStart; render(); const n = $("#qsearch"); n.focus(); n.setSelectionRange(pos, pos); return; }
+  if (t.id === "csearch") { cSearch = t.value; const pos = t.selectionStart; render(); const n = $("#csearch"); n.focus(); n.setSelectionRange(pos, pos); return; }
+  if (t.dataset.l != null && draft && t.dataset.k !== "serviceId" && t.dataset.k !== "propType") {
+    const l = draft.lines[+t.dataset.l]; l[t.dataset.k] = t.value; $("#calc" + t.dataset.l).innerHTML = calcHTML(l); $("#q-totals").innerHTML = totalsHTML(draft); return;
+  }
+  if ((t.id === "q-discount") && draft) { draft.discount = num(t.value); $("#q-totals").innerHTML = totalsHTML(draft); }
+});
+document.addEventListener("change", ev => {
+  const t = ev.target;
+  if (t.dataset.l != null && draft) {
+    const i = +t.dataset.l;
+    if (t.dataset.k === "serviceId") { readDraftTop(); const svc = S.services[t.value]; const old = draft.lines[i]; draft.lines[i] = Object.assign(newLine(svc || null), {measure: old.measure, note: old.note}); render(); return; }
+    if (t.dataset.k === "propType") { const l = draft.lines[i]; l.propType = t.value; const svc = S.services[l.serviceId]; if (svc && svc.prop) l.propRate = num(svc.prop[t.value]); readDraftTop(); render(); return; }
+  }
+  if (t.id === "q-vat" && draft) { draft.vatOn = t.checked; draft.vatRate = num(biz().vatRate); $("#q-totals").innerHTML = totalsHTML(draft); }
+  if (t.dataset.s === "unit") { readSvcs(); render(); }
+  if (t.id === "restore-file" && t.files && t.files[0]) {
+    const r = new FileReader();
+    r.onload = async () => {
+      let data; try { data = JSON.parse(r.result); } catch (e) { toast("That isn't a backup file."); return; }
+      const writes = []; COLS.forEach(c => Object.entries(data[c] || {}).forEach(([id, rec]) => { const body = Object.assign({}, rec); delete body.id; writes.push({user_id: me.id, col: c, id, data: body, updated_at: new Date().toISOString()}); }));
+      toast("Restoring " + writes.length + " records…");
+      for (let i = 0; i < writes.length; i += 200){ const {error} = await sb.from("records").upsert(writes.slice(i, i + 200), {onConflict: "user_id,col,id"}); if (error) { toast("Restore stopped: " + error.message); return; } }
+      writes.forEach(w => { S[w.col][w.id] = Object.assign({id: w.id}, w.data); });
+      toast("Restored " + writes.length + " records"); render();
+    };
+    r.readAsText(t.files[0]); return;
+  }
+  if (t.id === "lead-file" && t.files && t.files[0]) {
+    const f = t.files[0]; const r = new FileReader();
+    r.onload = () => { try { const rows = parseDelimited(decodeFile(r.result)); importRows = rows.length > 1 ? mapLeads(rows) : []; importName = f.name; } catch (e) { importRows = []; } render(); };
+    r.readAsArrayBuffer(f); return;
+  }
+  if (t.id === "b-logo" && t.files && t.files[0]) {
+    const f = t.files[0]; if (f.size > 150 * 1024) { toast("That logo is " + Math.round(f.size / 1024) + " KB. Use one under 150 KB."); t.value = ""; return; }
+    const r = new FileReader(); r.onload = async () => { await put("settings", Object.assign({}, biz(), {id: "business", logo: r.result})); toast("Logo saved"); render(); }; r.readAsDataURL(f);
+  }
+});
+function readDraftTop(){
+  if (!draft) return;
+  const g = s => $(s);
+  if (g("#q-customer")) draft.customerId = g("#q-customer").value;
+  if (g("#q-date")) draft.date = g("#q-date").value;
+  if (g("#q-due")) draft.dueDate = g("#q-due").value;
+  if (g("#q-discount")) draft.discount = num(g("#q-discount").value);
+  if (g("#q-notes")) draft.notes = g("#q-notes").value;
+  if (g("#q-private")) draft.privateNotes = g("#q-private").value;
+  if (g("#q-vat")) draft.vatOn = g("#q-vat").checked;
+  if (g("#quick") && !g("#quick").hidden) draft.quick = {name: g("#qc-name").value, phone: g("#qc-phone").value, email: g("#qc-email").value, address: g("#qc-address").value, postcode: g("#qc-postcode").value, source: g("#qc-source").value};
+}
+
+const ACTIONS = {
+  newQuote: (el) => startQuote(el.dataset.cid),
+  editQuote: (el, id) => startQuote(null, S.quotes[id]),
+  dupQuote: (el, id) => { const q = JSON.parse(JSON.stringify(S.quotes[id])); ["id","number","invoiceId","sentOn","followUpOn","createdAt","updatedAt"].forEach(k => delete q[k]); q.status = "draft"; q.date = today(); startQuote(null, q); },
+  cancelQuote: () => { const id = draft && draft.id; draft = null; id ? go("quote", {id}) : go("quotes"); },
+  addLine: () => { readDraftTop(); draft.lines.push(newLine(null)); render(); },
+  delLine: (el) => { readDraftTop(); draft.lines.splice(+el.dataset.i, 1); if (!draft.lines.length) draft.lines.push(newLine(null)); render(); },
+  quickCustomer: () => { readDraftTop(); draft.customerId = ""; draft.quick = draft.quick || {source: "Facebook"}; render(); $("#qc-name").focus(); },
+  saveQuote: () => saveQuote(),
+  markSent: async (el, id) => { const q = S.quotes[id]; await put("quotes", Object.assign({}, q, {status: "sent", sentOn: today(), followUpOn: addDays(today(), num(biz().followUpDays) || 3)})); toast("Marked as sent. Follow-up set for " + fmtDate(addDays(today(), num(biz().followUpDays) || 3))); render(); },
+  snooze: async (el, id) => { const q = S.quotes[id]; const n = addDays(today(), num(biz().followUpDays) || 3); await put("quotes", Object.assign({}, q, {followUpOn: n, followUps: (q.followUps || 0) + 1})); toast("Next follow-up " + fmtDate(n)); render(); },
+  accept: async (el, id) => { await put("quotes", Object.assign({}, S.quotes[id], {status: "accepted", acceptedOn: today()})); toast("Accepted. Book the job in below."); view.after = () => ACTIONS.bookFromQuote(null, id); render(); },
+  decline: async (el, id) => { await put("quotes", Object.assign({}, S.quotes[id], {status: "declined"})); render(); },
+  reopen: async (el, id) => { await put("quotes", Object.assign({}, S.quotes[id], {status: "sent", followUpOn: today()})); render(); },
+  bookFromQuote: (el, id) => { const box = $("#bookbox"); if (box) box.innerHTML = bookForm({act: "confirmBook", id}); },
+  confirmBook: async (el, id) => {
+    const q = S.quotes[id];
+    await createJob({customerId: q.customerId, quoteId: q.id, title: (q.lines || []).map(l => l.name).join(", "), price: totals(q).total, lines: q.lines, notes: q.privateNotes || ""});
+    render();
+  },
+  bookRepeat: (el, id) => { const box = $("#bookbox"); if (box) box.innerHTML = `<div class="fields" style="margin-top:10px"><label class="f">What's the job<input type="text" id="b-title" placeholder="e.g. Window clean"></label><label class="f">Price (£)<input type="number" step="0.01" id="b-price"></label></div>` + bookForm({act: "confirmRepeat", id, repeatWeeks: 4}); },
+  confirmRepeat: async (el, id) => { await createJob({customerId: id, title: $("#b-title").value.trim() || "Clean", price: num($("#b-price").value)}); render(); },
+  toInvoice: (el, id) => { const q = S.quotes[id]; startInvoice({customerId: q.customerId, quoteId: q.id, lines: q.lines, discount: q.discount, notes: q.notes, vatOn: q.vatOn, vatRate: q.vatRate}); },
+  newInvoice: () => startInvoice(),
+  editInvoice: (el, id) => startInvoice(S.invoices[id]),
+  cancelInvoice: () => { const id = draft && draft.id; draft = null; id ? go("invoice", {id}) : go("invoices"); },
+  saveInvoice: () => saveInvoice(),
+  markPaid: async (el, id) => { await put("invoices", Object.assign({}, S.invoices[id], {status: "paid", paidOn: $("#paidOn").value || today(), paidBy: $("#paidBy").value})); toast("Marked as paid"); render(); },
+  markUnpaid: async (el, id) => { const i = Object.assign({}, S.invoices[id], {status: "unpaid"}); delete i.paidOn; delete i.paidBy; await put("invoices", i); render(); },
+  pdf: (el, id) => makePDF(el.dataset.kind, (el.dataset.kind === "quote" ? S.quotes : S.invoices)[id]),
+  copy: async (el, id) => { const rec = (el.dataset.kind === "quote" ? S.quotes : S.invoices)[id]; const txt = shareText(el.dataset.kind, rec);
+    try { await navigator.clipboard.writeText(txt); toast("Message copied"); } catch (e) { const ta = document.createElement("textarea"); ta.value = txt; ta.style.marginTop = "8px"; el.closest(".panel").appendChild(ta); ta.select(); toast("Select all and copy the message below"); } },
+  newCustomer: () => { cdraft = {name: "", phone: "", email: "", address: "", postcode: "", source: "Facebook", notes: ""}; go("customerEdit"); },
+  editCustomer: (el, id) => { cdraft = Object.assign({}, S.customers[id]); go("customerEdit"); },
+  cancelCustomer: () => { const id = cdraft && cdraft.id; cdraft = null; id ? go("customer", {id}) : go("customers"); },
+  saveCustomer: async () => {
+    const c = Object.assign(cdraft, {name: $("#c-name").value.trim(), phone: $("#c-phone").value.trim(), email: $("#c-email").value.trim(), source: $("#c-source").value, address: $("#c-address").value.trim(), postcode: $("#c-postcode").value.trim().toUpperCase(), service: $("#c-service").value.trim(), notes: $("#c-notes").value});
+    if (!c.name) { toast("Add the customer's name."); return; }
+    const id = await put("customers", c); cdraft = null; toast("Saved " + c.name); go("customer", {id});
+  },
+  newJob: () => { jdraft = {customerId: "", title: "", price: "", date: view.name === "calendar" ? calSel : addDays(today(), 1), time: "09:00", hours: 2, repeatWeeks: 0, notes: "", done: false}; go("job"); },
+  cancelJob: () => { jdraft = null; go("calendar"); },
+  saveJob: async () => { readJobForm(); if (!jdraft.customerId) { toast("Choose a customer first."); return; } const id = await put("jobs", jdraft); jdraft = Object.assign({}, S.jobs[id]); toast("Job saved for " + fmtDate(jdraft.date)); calSel = jdraft.date; calMonth = jdraft.date.slice(0, 7); go("calendar"); },
+  doneJob: async () => {
+    readJobForm(); const j = Object.assign({}, jdraft, {done: true, doneOn: today()}); await put("jobs", j);
+    if (num(j.repeatWeeks)) { const n = Object.assign({}, j); delete n.id; delete n.invoiceId; delete n.doneOn; delete n.createdAt; n.done = false; n.date = addDays(j.date, num(j.repeatWeeks) * 7); await put("jobs", n); toast("Done. Next clean booked for " + fmtDate(n.date)); }
+    else toast("Marked as done");
+    jdraft = Object.assign({}, S.jobs[j.id]); render(true);
+  },
+  undoJob: async () => { readJobForm(); await put("jobs", Object.assign({}, jdraft, {done: false})); jdraft = Object.assign({}, S.jobs[jdraft.id]); render(true); },
+  invoiceJob: () => { readJobForm(); const j = jdraft; const lines = j.lines && j.lines.length ? j.lines : [Object.assign(newLine(null), {name: j.title || "Clean", rate: num(j.price)})]; startInvoice({customerId: j.customerId, jobId: j.id, quoteId: j.quoteId, lines}); },
+  saveBiz: async () => {
+    const v = s => $(s) ? $(s).value : "";
+    await put("settings", Object.assign({}, biz(), {id: "business", name: v("#b-name").trim(), owner: v("#b-owner").trim(), phone: v("#b-phone").trim(), email: v("#b-email").trim(), website: v("#b-website").trim(), address: v("#b-address").trim(),
+      bankName: v("#b-bank").trim(), sortCode: v("#b-sort").trim(), accountNo: v("#b-acc").trim(), paymentDays: num(v("#b-pay")) || 7, vatOn: $("#b-vaton").checked, vatRate: num(v("#b-vatrate")) || 20, vatNo: v("#b-vatno").trim(),
+      followUpDays: num(v("#b-fu")) || 3, validDays: num(v("#b-valid")) || 30, quoteNote: v("#b-qnote"), invoiceNote: v("#b-inote")}));
+    toast("Details saved");
+  },
+  clearLogo: async () => { await put("settings", Object.assign({}, biz(), {id: "business", logo: ""})); render(); },
+  addSvc: async () => { readSvcs(); const order = Object.keys(S.services).length + 1; await put("services", {name: "New service", unit: "m2", rate: 0, min: 0, order, active: true}); render(); },
+  saveSvcs: async () => { readSvcs(); for (const s of Object.values(S.services)) await put("services", s); toast("Prices saved"); render(); },
+  starter: async () => { let o = 1; for (const [name, unit, rate, min, prop] of STARTER) { const s = {name, unit, rate, min, order: o++, active: true}; if (prop) s.prop = prop; await put("services", s); } toast("Starter prices loaded. Change them to yours."); render(); },
+  backup: () => saveFile("CTM backup " + today() + ".json", JSON.stringify({exportedAt: new Date().toISOString(), customers: S.customers, quotes: S.quotes, invoices: S.invoices, jobs: S.jobs, services: S.services, settings: S.settings}, null, 2)),
+  doImport: async () => {
+    const fresh = (importRows || []).filter(l => !isDuplicate(l)); let n = 0;
+    for (const l of fresh){ await put("customers", Object.assign({stage: "lead"}, l)); n++; }
+    importRows = null; toast("Imported " + n + " lead" + (n === 1 ? "" : "s")); go("today");
+  },
+  signOut: async () => { await sb.auth.signOut(); },
+  closeLead: async (el, id) => { await put("customers", Object.assign({}, S.customers[id], {stage: "closed"})); toast("Removed from new leads"); render(); },
+  csv: () => {
+    const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+    const rows = [["Name","Phone","Email","Address","Postcode","Source","Notes","Customer since"]].concat(Object.values(S.customers).map(c => [c.name, c.phone, c.email, c.address, c.postcode, c.source, c.notes, (c.createdAt || "").slice(0, 10)]));
+    saveFile("CTM customers " + today() + ".csv", rows.map(r => r.map(q).join(",")).join("\n"));
+  },
+  askDel: (el, id) => {
+    const kind = el.dataset.kind; pendingDel = {kind, id};
+    const what = {quotes: "this quote", invoices: "this invoice", customers: "this customer (their quotes and invoices stay)", jobs: "this job", services: "this service"}[kind];
+    el.parentElement.innerHTML = `<span class="confirm">Delete ${what}? <button class="btn sm danger" data-act="doDel">Delete</button><button class="btn sm" data-act="noDel">Keep</button></span>`;
+  },
+  noDel: () => { pendingDel = null; render(); },
+  doDel: async () => {
+    if (!pendingDel) return; const {kind, id} = pendingDel; pendingDel = null;
+    await remove(kind, id); toast("Deleted");
+    if (kind === "services") { readSvcs(); render(); } else go({quotes: "quotes", invoices: "invoices", customers: "customers", jobs: "calendar"}[kind]);
+  }
+};
+
+/* ---------- boot ---------- */
+window.addEventListener("online", () => connected && render()); window.addEventListener("offline", () => connected && render());
+const h = (location.hash || "").slice(1);
+if (TABS.some(t => t[0] === h)) view = {name: h};
+renderTabs();
+initStore();
+})();
+</script>
+
+</body>
+</html>
