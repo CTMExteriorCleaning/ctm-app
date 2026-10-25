@@ -24,7 +24,8 @@ function toCustomer(f: Lead, leadId: string, created: string, platform: string) 
     return "";
   };
   const known = new Set(["full_name", "first_name", "last_name", "phone_number", "phone", "email",
-    "street_address", "address", "city", "post_code", "postcode", "zip_code", "service"]);
+    "street_address", "address", "city", "post_code", "postcode", "zip_code", "service",
+    "lead_id", "id", "created_time", "platform"]);
   const extras = Object.entries(f).filter(([k, v]) => !known.has(k) && v);
   const svc = f.service || extras.find(([k]) => /service|clean|job|work|need|interest|looking/.test(k))?.[1] || "";
   const notes = extras.filter(([, v]) => v !== svc)
@@ -82,7 +83,8 @@ Deno.serve(async (req) => {
   // Simple JSON from Make/Zapier
   if (url.searchParams.has("key")) {
     if (!env("LEADS_SECRET") || url.searchParams.get("key") !== env("LEADS_SECRET")) return new Response("Forbidden", { status: 403 });
-    const f = JSON.parse(body) as Lead;
+    let f: Lead;
+    try { f = JSON.parse(body); } catch { return new Response("Body must be JSON", { status: 400 }); }
     await save(toCustomer(f, f.lead_id || f.id || "", f.created_time || "", (f.platform || "").toLowerCase()));
     return Response.json({ ok: true });
   }
