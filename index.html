@@ -293,7 +293,8 @@ const biz = () => Object.assign({
   paymentDays: 7, followUpDays: 3, validDays: 30,
   quoteNote: "Thank you for the opportunity to quote. Prices include all equipment, water and waste removal.",
   invoiceNote: "Thank you for your business.",
-  leadMsg: "Hi {first}, thanks for getting in touch with {business} about {service}. I'd be happy to give you a price. Could you confirm your address and let me know when suits you?\n\n{owner}"
+  leadMsg: "Hi {first}, thanks for getting in touch with {business} about {service}. I'd be happy to give you a price. Could you confirm your address and let me know when suits you?\n\n{owner}",
+  remindMsg: "Hi {first}, just a reminder that {business} will be with you tomorrow ({day}){time} for your {job}. Please leave any side gates unlocked. Thanks, {owner}"
 }, S.settings.business || {});
 async function nextNumber(kind){
   const c = Object.assign({quote: 0, invoice: 0}, S.settings.counters || {});
@@ -346,14 +347,23 @@ function chases(){
   const t = today();
   return Object.values(S.invoices).filter(i => i.status !== "paid" && i.dueDate && addDays(i.dueDate, 1) <= t).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
-function fillMsg(tpl, c){
-  const b = biz(), vals = {first: (c.name || "").split(" ")[0] || "there", name: c.name || "", business: b.name, owner: b.owner || b.name, phone: b.phone || "", service: c.service || "your cleaning"};
+function fillMsg(tpl, c, extra){
+  const b = biz(), vals = Object.assign({first: (c.name || "").split(" ")[0] || "there", name: c.name || "", business: b.name, owner: b.owner || b.name, phone: b.phone || "", service: c.service || "your cleaning"}, extra || {});
   return String(tpl || "").replace(/\{(\w+)\}/g, (m, k) => k in vals ? vals[k] : m).trim();
 }
-function msgButtons(phone, txt){
+function msgButtons(phone, txt, remindId){
   if (!phone) return "";
-  const t = encodeURIComponent(txt);
-  return `<a class="btn sm" href="${esc(`https://wa.me/${waNumber(phone)}?text=${t}`)}" target="_blank" rel="noopener">WhatsApp</a><a class="btn sm" href="${esc(`sms:${String(phone).replace(/[^\d+]/g, "")}?&body=${t}`)}">Text</a>`;
+  const t = encodeURIComponent(txt), r = remindId ? ` data-remind="${remindId}"` : "";
+  return `<a class="btn sm"${r} href="${esc(`https://wa.me/${waNumber(phone)}?text=${t}`)}" target="_blank" rel="noopener">WhatsApp</a><a class="btn sm"${r} href="${esc(`sms:${String(phone).replace(/[^\d+]/g, "")}?&body=${t}`)}">Text</a>`;
+}
+function reminderText(j){
+  const c = cust(j.customerId);
+  return fillMsg(biz().remindMsg, c, {day: parseISO(j.date).toLocaleDateString("en-GB", {weekday: "long", day: "numeric", month: "long"}), time: j.time ? " at around " + j.time : "", job: (j.title || "clean").toLowerCase()});
+}
+function reminderRow(j){
+  const c = cust(j.customerId), sent = j.remindedOn;
+  return `<div class="item"><div class="main"><div class="t">${esc(c.name)}${sent ? ' <span class="pill done">Reminded</span>' : ""}</div><div class="d">${esc(j.title || "Clean")}${j.time ? " · " + esc(j.time) : ""} · ${esc(c.postcode || c.address || "")}</div></div>
+    <div class="row">${c.phone ? msgButtons(c.phone, reminderText(j), j.id) : '<span class="hint">No phone saved</span>'}</div></div>`;
 }
 function phoneLink(p){ return p ? `<a href="tel:${esc(String(p).replace(/[^\d+]/g, ""))}">${esc(p)}</a>` : ""; }
 function waNumber(p){ let d = String(p || "").replace(/\D/g, ""); if (d.startsWith("0")) d = "44" + d.slice(1); return d; }
@@ -498,6 +508,7 @@ VIEWS.today = function(){
   const fu = followUps(), ch = chases(), leads = newLeads();
   const jobsAhead = Object.values(S.jobs).filter(j => !j.done && j.date >= t && j.date <= addDays(t, 6)).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
   const late = Object.values(S.jobs).filter(j => !j.done && j.date < t);
+  const remind = Object.values(S.jobs).filter(j => !j.done && j.date === addDays(t, 1)).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
   const month = t.slice(0, 7);
   const paidMonth = Object.values(S.invoices).filter(i => i.status === "paid" && String(i.paidOn || "").startsWith(month)).reduce((s, i) => s + totals(i).total, 0);
   const owed = Object.values(S.invoices).filter(i => i.status !== "paid").reduce((s, i) => s + totals(i).total, 0);
@@ -515,6 +526,8 @@ VIEWS.today = function(){
     <div class="stat"><div class="k">Quotes waiting</div><div class="v num">${gbp(openVal)}</div><div class="s">${openQ.length} sent, no answer yet</div></div>
     <div class="stat"><div class="k">Win rate this month</div><div class="v num">${decided ? Math.round(won / decided * 100) + "%" : "–"}</div><div class="s">${won} won of ${decided} decided</div></div>
   </div>
+  ${remind.length ? `<section class="panel"><div class="row"><h2>Reminders for tomorrow</h2><span class="spacer"></span><span class="hint">${remind.filter(j => j.remindedOn).length} of ${remind.length} sent</span></div>
+    <p class="hint">Tap WhatsApp or Text, press send, then come back here for the next one. Change the wording in Settings.</p><div class="list">${remind.map(reminderRow).join("")}</div></section>` : ""}
   ${leads.length ? `<section class="panel"><div class="row"><h2>New leads</h2><span class="spacer"></span><button class="btn sm ghost" data-tab="importLeads">Import leads</button></div><div class="list">${leads.map(leadRow).join("")}</div></section>` : ""}
   <div class="grid2">
     <section class="panel"><h2>Needs a call</h2>
@@ -1008,6 +1021,7 @@ VIEWS.business = function(){
     <label class="f">Quotes valid for (days)<input type="number" id="b-valid" value="${esc(b.validDays)}"></label>
     <label class="f wide">Note at the bottom of quotes<textarea id="b-qnote">${esc(b.quoteNote)}</textarea></label>
     <label class="f wide">Note at the bottom of invoices<textarea id="b-inote">${esc(b.invoiceNote)}</textarea></label>
+    <label class="f wide">Day-before reminder message. You can use {first}, {day}, {time}, {job}, {business} and {owner}<textarea id="b-rnote">${esc(b.remindMsg)}</textarea></label>
     <label class="f wide">First message to a new lead (WhatsApp / Text button). You can use {first}, {service}, {business} and {owner}<textarea id="b-lnote">${esc(b.leadMsg)}</textarea></label>
   </div><div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-act="saveBiz">Save details</button></div></section>
   <section class="panel"><div class="row"><h2>Services and prices</h2><span class="spacer"></span><button class="btn sm" data-act="addSvc">+ Add service</button></div>
@@ -1105,6 +1119,10 @@ async function saveFile(filename, data){
 
 /* ---------- events ---------- */
 let pendingDel = null;
+document.addEventListener("click", ev => {
+  const a = ev.target.closest("[data-remind]"); const j = a && S.jobs[a.dataset.remind];
+  if (j && !j.remindedOn) setTimeout(async () => { await put("jobs", Object.assign({}, j, {remindedOn: today()})); if (view.name === "today") render(); }, 300);
+});
 document.addEventListener("click", async ev => {
   const el = ev.target.closest("[data-tab],[data-open],[data-act],[data-qf],[data-if],[data-cal],[data-day]");
   if (!el) return;
@@ -1222,7 +1240,7 @@ const ACTIONS = {
   saveJob: async () => { readJobForm(); if (!jdraft.customerId) { toast("Choose a customer first."); return; } const id = await put("jobs", jdraft); jdraft = Object.assign({}, S.jobs[id]); toast("Job saved for " + fmtDate(jdraft.date)); calSel = jdraft.date; calMonth = jdraft.date.slice(0, 7); go("calendar"); },
   doneJob: async () => {
     readJobForm(); const j = Object.assign({}, jdraft, {done: true, doneOn: today()}); await put("jobs", j);
-    if (num(j.repeatWeeks)) { const n = Object.assign({}, j); delete n.id; delete n.invoiceId; delete n.doneOn; delete n.createdAt; n.done = false; n.date = addDays(j.date, num(j.repeatWeeks) * 7); await put("jobs", n); toast("Done. Next clean booked for " + fmtDate(n.date)); }
+    if (num(j.repeatWeeks)) { const n = Object.assign({}, j); delete n.id; delete n.invoiceId; delete n.doneOn; delete n.remindedOn; delete n.createdAt; n.done = false; n.date = addDays(j.date, num(j.repeatWeeks) * 7); await put("jobs", n); toast("Done. Next clean booked for " + fmtDate(n.date)); }
     else toast("Marked as done");
     jdraft = Object.assign({}, S.jobs[j.id]); render(true);
   },
@@ -1232,7 +1250,7 @@ const ACTIONS = {
     const v = s => $(s) ? $(s).value : "";
     await put("settings", Object.assign({}, biz(), {id: "business", name: v("#b-name").trim(), owner: v("#b-owner").trim(), phone: v("#b-phone").trim(), email: v("#b-email").trim(), website: v("#b-website").trim(), address: v("#b-address").trim(),
       bankName: v("#b-bank").trim(), sortCode: v("#b-sort").trim(), accountNo: v("#b-acc").trim(), paymentDays: num(v("#b-pay")) || 7, vatOn: $("#b-vaton").checked, vatRate: num(v("#b-vatrate")) || 20, vatNo: v("#b-vatno").trim(),
-      followUpDays: num(v("#b-fu")) || 3, validDays: num(v("#b-valid")) || 30, quoteNote: v("#b-qnote"), invoiceNote: v("#b-inote"), leadMsg: v("#b-lnote")}));
+      followUpDays: num(v("#b-fu")) || 3, validDays: num(v("#b-valid")) || 30, quoteNote: v("#b-qnote"), invoiceNote: v("#b-inote"), leadMsg: v("#b-lnote"), remindMsg: v("#b-rnote")}));
     toast("Details saved");
   },
   faConnect: () => faConnect(),
