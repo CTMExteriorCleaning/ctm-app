@@ -292,7 +292,8 @@ const biz = () => Object.assign({
   bankName: "", sortCode: "", accountNo: "", vatOn: false, vatRate: 20, vatNo: "",
   paymentDays: 7, followUpDays: 3, validDays: 30,
   quoteNote: "Thank you for the opportunity to quote. Prices include all equipment, water and waste removal.",
-  invoiceNote: "Thank you for your business."
+  invoiceNote: "Thank you for your business.",
+  leadMsg: "Hi {first}, thanks for getting in touch with {business} about {service}. I'd be happy to give you a price. Could you confirm your address and let me know when suits you?\n\n{owner}"
 }, S.settings.business || {});
 async function nextNumber(kind){
   const c = Object.assign({quote: 0, invoice: 0}, S.settings.counters || {});
@@ -344,6 +345,15 @@ function followUps(){
 function chases(){
   const t = today();
   return Object.values(S.invoices).filter(i => i.status !== "paid" && i.dueDate && addDays(i.dueDate, 1) <= t).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+function fillMsg(tpl, c){
+  const b = biz(), vals = {first: (c.name || "").split(" ")[0] || "there", name: c.name || "", business: b.name, owner: b.owner || b.name, phone: b.phone || "", service: c.service || "your cleaning"};
+  return String(tpl || "").replace(/\{(\w+)\}/g, (m, k) => k in vals ? vals[k] : m).trim();
+}
+function msgButtons(phone, txt){
+  if (!phone) return "";
+  const t = encodeURIComponent(txt);
+  return `<a class="btn sm" href="${esc(`https://wa.me/${waNumber(phone)}?text=${t}`)}" target="_blank" rel="noopener">WhatsApp</a><a class="btn sm" href="${esc(`sms:${String(phone).replace(/[^\d+]/g, "")}?&body=${t}`)}">Text</a>`;
 }
 function phoneLink(p){ return p ? `<a href="tel:${esc(String(p).replace(/[^\d+]/g, ""))}">${esc(p)}</a>` : ""; }
 function waNumber(p){ let d = String(p || "").replace(/\D/g, ""); if (d.startsWith("0")) d = "44" + d.slice(1); return d; }
@@ -748,6 +758,7 @@ VIEWS.customer = function(){
     <dt>Address</dt><dd>${esc(maps) || "–"}${maps ? ` · <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(maps)}" target="_blank" rel="noopener">Map</a>` : ""}</dd>
     ${c.service ? `<dt>Asked for</dt><dd>${esc(c.service)}</dd>` : ""}
     <dt>Notes</dt><dd style="white-space:pre-wrap">${esc(c.notes) || "–"}</dd></dl>
+    ${c.phone ? `<div class="row" style="margin-top:12px">${msgButtons(c.phone, c.stage === "lead" && !qs.length ? fillMsg(biz().leadMsg, c) : "Hi " + fillMsg("{first}", c) + ", ")}<span class="hint">${c.stage === "lead" && !qs.length ? "Opens with your new-lead message written. Change it in Settings." : "Message from your own phone."}</span></div>` : ""}
     ${c.stage === "lead" && !qs.length ? `<div class="row" style="margin-top:12px"><span class="pill sent">New lead</span><span class="hint">Stays on the Today screen until you quote it.</span><span class="spacer"></span><button class="btn sm" data-act="closeLead" data-id="${c.id}">Not interested</button></div>` : ""}
     <div class="row" style="margin-top:12px"><span class="spacer"></span><span id="delc"><button class="btn sm ghost danger" data-act="askDel" data-kind="customers" data-id="${c.id}">Delete customer</button></span></div></section>
   <section class="panel"><div class="row"><h3>Jobs</h3><span class="spacer"></span><button class="btn sm" data-act="bookRepeat" data-id="${c.id}">Book a clean</button></div><div id="bookbox"></div>
@@ -997,6 +1008,7 @@ VIEWS.business = function(){
     <label class="f">Quotes valid for (days)<input type="number" id="b-valid" value="${esc(b.validDays)}"></label>
     <label class="f wide">Note at the bottom of quotes<textarea id="b-qnote">${esc(b.quoteNote)}</textarea></label>
     <label class="f wide">Note at the bottom of invoices<textarea id="b-inote">${esc(b.invoiceNote)}</textarea></label>
+    <label class="f wide">First message to a new lead (WhatsApp / Text button). You can use {first}, {service}, {business} and {owner}<textarea id="b-lnote">${esc(b.leadMsg)}</textarea></label>
   </div><div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-act="saveBiz">Save details</button></div></section>
   <section class="panel"><div class="row"><h2>Services and prices</h2><span class="spacer"></span><button class="btn sm" data-act="addSvc">+ Add service</button></div>
     <p class="hint">Price by m², by metre, per item, as a fixed price, or by property type. A minimum charge kicks in when a small job would come in under it.</p>
@@ -1220,7 +1232,7 @@ const ACTIONS = {
     const v = s => $(s) ? $(s).value : "";
     await put("settings", Object.assign({}, biz(), {id: "business", name: v("#b-name").trim(), owner: v("#b-owner").trim(), phone: v("#b-phone").trim(), email: v("#b-email").trim(), website: v("#b-website").trim(), address: v("#b-address").trim(),
       bankName: v("#b-bank").trim(), sortCode: v("#b-sort").trim(), accountNo: v("#b-acc").trim(), paymentDays: num(v("#b-pay")) || 7, vatOn: $("#b-vaton").checked, vatRate: num(v("#b-vatrate")) || 20, vatNo: v("#b-vatno").trim(),
-      followUpDays: num(v("#b-fu")) || 3, validDays: num(v("#b-valid")) || 30, quoteNote: v("#b-qnote"), invoiceNote: v("#b-inote")}));
+      followUpDays: num(v("#b-fu")) || 3, validDays: num(v("#b-valid")) || 30, quoteNote: v("#b-qnote"), invoiceNote: v("#b-inote"), leadMsg: v("#b-lnote")}));
     toast("Details saved");
   },
   faConnect: () => faConnect(),
