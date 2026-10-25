@@ -294,7 +294,9 @@ const biz = () => Object.assign({
   quoteNote: "Thank you for the opportunity to quote. Prices include all equipment, water and waste removal.",
   invoiceNote: "Thank you for your business.",
   leadMsg: "Hi {first}, thanks for getting in touch with {business} about {service}. I'd be happy to give you a price. Could you confirm your address and let me know when suits you?\n\n{owner}",
-  remindMsg: "Hi {first}, just a reminder that {business} will be with you tomorrow ({day}){time} for your {job}. Please leave any side gates unlocked. Thanks, {owner}"
+  remindMsg: "Hi {first}, just a reminder that {business} will be with you tomorrow ({day}){time} for your {job}. Please leave any side gates unlocked. Thanks, {owner}",
+  reviewLink: "",
+  reviewMsg: "Hi {first}, thanks for choosing {business}. If you're happy with the clean, would you mind leaving us a quick Google review? It only takes a minute and really helps a small local business.\n\n{link}\n\nThanks, {owner}"
 }, S.settings.business || {});
 async function nextNumber(kind){
   const c = Object.assign({quote: 0, invoice: 0}, S.settings.counters || {});
@@ -351,9 +353,9 @@ function fillMsg(tpl, c, extra){
   const b = biz(), vals = Object.assign({first: (c.name || "").split(" ")[0] || "there", name: c.name || "", business: b.name, owner: b.owner || b.name, phone: b.phone || "", service: c.service || "your cleaning"}, extra || {});
   return String(tpl || "").replace(/\{(\w+)\}/g, (m, k) => k in vals ? vals[k] : m).trim();
 }
-function msgButtons(phone, txt, remindId){
+function msgButtons(phone, txt, remindId, reviewCid){
   if (!phone) return "";
-  const t = encodeURIComponent(txt), r = remindId ? ` data-remind="${remindId}"` : "";
+  const t = encodeURIComponent(txt), r = (remindId ? ` data-remind="${remindId}"` : "") + (reviewCid ? ` data-review="${reviewCid}"` : "");
   return `<a class="btn sm"${r} href="${esc(`https://wa.me/${waNumber(phone)}?text=${t}`)}" target="_blank" rel="noopener">WhatsApp</a><a class="btn sm"${r} href="${esc(`sms:${String(phone).replace(/[^\d+]/g, "")}?&body=${t}`)}">Text</a>`;
 }
 function reminderText(j){
@@ -364,6 +366,23 @@ function reminderRow(j){
   const c = cust(j.customerId), sent = j.remindedOn;
   return `<div class="item"><div class="main"><div class="t">${esc(c.name)}${sent ? ' <span class="pill done">Reminded</span>' : ""}</div><div class="d">${esc(j.title || "Clean")}${j.time ? " · " + esc(j.time) : ""} · ${esc(c.postcode || c.address || "")}</div></div>
     <div class="row">${c.phone ? msgButtons(c.phone, reminderText(j), j.id) : '<span class="hint">No phone saved</span>'}</div></div>`;
+}
+// Google review requests: one ask per customer, offered once they've paid.
+const reviewText = c => fillMsg(biz().reviewMsg, c, {link: biz().reviewLink || ""});
+const lastPaid = cid => Object.values(S.invoices).filter(i => i.customerId === cid && i.status === "paid").map(i => i.paidOn || "").sort().pop();
+function reviewsDue(){
+  const since = addDays(today(), -30);
+  return Object.values(S.customers).filter(c => !c.reviewAskedOn && !c.reviewSkipped && (lastPaid(c.id) || "") >= since && lastPaid(c.id)).sort((a, b) => lastPaid(b.id).localeCompare(lastPaid(a.id)));
+}
+function reviewBox(c){
+  if (c.reviewAskedOn) return `<span class="pill done">Review asked</span><span class="hint">Asked for a Google review on ${fmtDate(c.reviewAskedOn)}.</span><span class="spacer"></span><button class="btn sm ghost" data-act="unaskReview" data-id="${c.id}">Undo</button>`;
+  if (!biz().reviewLink) return `<span class="hint">Add your Google review link in Business settings to ask ${esc(c.name.split(" ")[0] || "them")} for a review.</span><span class="spacer"></span><button class="btn sm" data-tab="business">Add link</button>`;
+  if (!c.phone) return `<span class="hint">No phone saved, so the review button can't open WhatsApp or Text.</span>`;
+  return `${msgButtons(c.phone, reviewText(c), "", c.id)}<span class="hint">Opens with your review request written. Change it in Business settings.</span>${c.reviewSkipped ? "" : `<span class="spacer"></span><button class="btn sm ghost" data-act="skipReview" data-id="${c.id}">Don't ask</button>`}`;
+}
+function reviewRow(c){
+  return `<div class="item"><div class="main"><div class="t">${esc(c.name)}</div><div class="d">Paid ${fmtDate(lastPaid(c.id))} · ${esc(c.postcode || c.address || "")}</div></div>
+    <div class="row">${c.phone ? msgButtons(c.phone, reviewText(c), "", c.id) : '<span class="hint">No phone saved</span>'}<button class="btn sm ghost" data-act="skipReview" data-id="${c.id}">Don't ask</button></div></div>`;
 }
 function phoneLink(p){ return p ? `<a href="tel:${esc(String(p).replace(/[^\d+]/g, ""))}">${esc(p)}</a>` : ""; }
 function waNumber(p){ let d = String(p || "").replace(/\D/g, ""); if (d.startsWith("0")) d = "44" + d.slice(1); return d; }
@@ -509,6 +528,7 @@ VIEWS.today = function(){
   const jobsAhead = Object.values(S.jobs).filter(j => !j.done && j.date >= t && j.date <= addDays(t, 6)).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
   const late = Object.values(S.jobs).filter(j => !j.done && j.date < t);
   const remind = Object.values(S.jobs).filter(j => !j.done && j.date === addDays(t, 1)).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  const reviews = reviewsDue();
   const month = t.slice(0, 7);
   const paidMonth = Object.values(S.invoices).filter(i => i.status === "paid" && String(i.paidOn || "").startsWith(month)).reduce((s, i) => s + totals(i).total, 0);
   const owed = Object.values(S.invoices).filter(i => i.status !== "paid").reduce((s, i) => s + totals(i).total, 0);
@@ -528,6 +548,8 @@ VIEWS.today = function(){
   </div>
   ${remind.length ? `<section class="panel"><div class="row"><h2>Reminders for tomorrow</h2><span class="spacer"></span><span class="hint">${remind.filter(j => j.remindedOn).length} of ${remind.length} sent</span></div>
     <p class="hint">Tap WhatsApp or Text, press send, then come back here for the next one. Change the wording in Settings.</p><div class="list">${remind.map(reminderRow).join("")}</div></section>` : ""}
+  ${reviews.length ? `<section class="panel"><div class="row"><h2>Ask for a Google review</h2><span class="spacer"></span><span class="hint">${reviews.length} paid recently</span></div>
+    ${b.reviewLink ? `<p class="hint">These customers paid in the last 30 days. Tap WhatsApp or Text, press send, and they drop off this list. Tap Don't ask to skip someone.</p><div class="list">${reviews.map(reviewRow).join("")}</div>` : `<div class="row"><span class="hint">Add your Google review link in Business settings and these customers will get a one-tap review request.</span><span class="spacer"></span><button class="btn sm" data-tab="business">Add link</button></div>`}</section>` : ""}
   ${leads.length ? `<section class="panel"><div class="row"><h2>New leads</h2><span class="spacer"></span><button class="btn sm ghost" data-tab="importLeads">Import leads</button></div><div class="list">${leads.map(leadRow).join("")}</div></section>` : ""}
   <div class="grid2">
     <section class="panel"><h2>Needs a call</h2>
@@ -772,6 +794,7 @@ VIEWS.customer = function(){
     ${c.service ? `<dt>Asked for</dt><dd>${esc(c.service)}</dd>` : ""}
     <dt>Notes</dt><dd style="white-space:pre-wrap">${esc(c.notes) || "–"}</dd></dl>
     ${c.phone ? `<div class="row" style="margin-top:12px">${msgButtons(c.phone, c.stage === "lead" && !qs.length ? fillMsg(biz().leadMsg, c) : "Hi " + fillMsg("{first}", c) + ", ")}<span class="hint">${c.stage === "lead" && !qs.length ? "Opens with your new-lead message written. Change it in Settings." : "Message from your own phone."}</span></div>` : ""}
+    ${spent || c.reviewAskedOn ? `<div class="row" style="margin-top:12px">${reviewBox(c)}</div>` : ""}
     ${c.stage === "lead" && !qs.length ? `<div class="row" style="margin-top:12px"><span class="pill sent">New lead</span><span class="hint">Stays on the Today screen until you quote it.</span><span class="spacer"></span><button class="btn sm" data-act="closeLead" data-id="${c.id}">Not interested</button></div>` : ""}
     <div class="row" style="margin-top:12px"><span class="spacer"></span><span id="delc"><button class="btn sm ghost danger" data-act="askDel" data-kind="customers" data-id="${c.id}">Delete customer</button></span></div></section>
   <section class="panel"><div class="row"><h3>Jobs</h3><span class="spacer"></span><button class="btn sm" data-act="bookRepeat" data-id="${c.id}">Book a clean</button></div><div id="bookbox"></div>
@@ -880,6 +903,7 @@ VIEWS.invoice = function(){
     ${i.status !== "paid" ? `<label class="f" style="flex-direction:row;align-items:center;gap:8px">Paid on <input type="date" id="paidOn" value="${today()}" style="width:auto"></label><select id="paidBy" style="width:auto"><option>Bank transfer</option><option>Cash</option><option>Card</option><option>Cheque</option></select><button class="btn primary" data-act="markPaid" data-id="${i.id}">Mark as paid</button>` : `<span>Paid ${fmtLong(i.paidOn)}${i.paidBy ? " by " + esc(i.paidBy) : ""}</span><button class="btn sm" data-act="markUnpaid" data-id="${i.id}">Mark unpaid</button>`}
     ${i.quoteId && S.quotes[i.quoteId] ? `<button class="btn" data-open="quote" data-id="${i.quoteId}">From quote ${esc(S.quotes[i.quoteId].number)}</button>` : ""}
     <span class="spacer"></span><span id="deli"><button class="btn sm ghost danger" data-act="askDel" data-kind="invoices" data-id="${i.id}">Delete</button></span></div></section>
+  ${i.status === "paid" && S.customers[i.customerId] ? `<section class="panel"><h3>Ask ${esc(c.name.split(" ")[0])} for a Google review</h3><div class="row">${reviewBox(c)}</div></section>` : ""}
   ${faPanel(i)}
   <section class="panel"><h3>Send to ${esc(c.name)}</h3>${sendBar("invoice", i)}</section>
   ${docHTML("invoice", i)}`;
@@ -1024,6 +1048,11 @@ VIEWS.business = function(){
     <label class="f wide">Day-before reminder message. You can use {first}, {day}, {time}, {job}, {business} and {owner}<textarea id="b-rnote">${esc(b.remindMsg)}</textarea></label>
     <label class="f wide">First message to a new lead (WhatsApp / Text button). You can use {first}, {service}, {business} and {owner}<textarea id="b-lnote">${esc(b.leadMsg)}</textarea></label>
   </div><div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-act="saveBiz">Save details</button></div></section>
+  <section class="panel"><h2>Google reviews</h2>
+    <p class="hint">Once a customer has paid, the app offers a one-tap WhatsApp or Text asking for a review, and remembers who you've asked so nobody gets asked twice.</p><div class="fields">
+    <label class="f wide">Your Google review link (from Google Business Profile, "Ask for reviews")<input type="text" id="b-revlink" inputmode="url" placeholder="https://g.page/r/..." value="${esc(b.reviewLink)}"></label>
+    <label class="f wide">Review request message. You can use {first}, {link}, {business} and {owner}<textarea id="b-revmsg">${esc(b.reviewMsg)}</textarea></label>
+  </div><div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-act="saveBiz">Save details</button></div></section>
   <section class="panel"><div class="row"><h2>Services and prices</h2><span class="spacer"></span><button class="btn sm" data-act="addSvc">+ Add service</button></div>
     <p class="hint">Price by m², by metre, per item, as a fixed price, or by property type. A minimum charge kicks in when a small job would come in under it.</p>
     <div id="svcs">${svcs.length ? svcs.map(svcHTML).join("") : `<div class="empty">No services yet. <button class="btn sm" data-act="starter">Load starter prices</button> and adjust them to yours.</div>`}</div>
@@ -1122,6 +1151,8 @@ let pendingDel = null;
 document.addEventListener("click", ev => {
   const a = ev.target.closest("[data-remind]"); const j = a && S.jobs[a.dataset.remind];
   if (j && !j.remindedOn) setTimeout(async () => { await put("jobs", Object.assign({}, j, {remindedOn: today()})); if (view.name === "today") render(); }, 300);
+  const r = ev.target.closest("[data-review]"); const c = r && S.customers[r.dataset.review];
+  if (c && !c.reviewAskedOn) setTimeout(async () => { await put("customers", Object.assign({}, c, {reviewAskedOn: today()})); render(); }, 300);
 });
 document.addEventListener("click", async ev => {
   const el = ev.target.closest("[data-tab],[data-open],[data-act],[data-qf],[data-if],[data-cal],[data-day]");
@@ -1250,7 +1281,7 @@ const ACTIONS = {
     const v = s => $(s) ? $(s).value : "";
     await put("settings", Object.assign({}, biz(), {id: "business", name: v("#b-name").trim(), owner: v("#b-owner").trim(), phone: v("#b-phone").trim(), email: v("#b-email").trim(), website: v("#b-website").trim(), address: v("#b-address").trim(),
       bankName: v("#b-bank").trim(), sortCode: v("#b-sort").trim(), accountNo: v("#b-acc").trim(), paymentDays: num(v("#b-pay")) || 7, vatOn: $("#b-vaton").checked, vatRate: num(v("#b-vatrate")) || 20, vatNo: v("#b-vatno").trim(),
-      followUpDays: num(v("#b-fu")) || 3, validDays: num(v("#b-valid")) || 30, quoteNote: v("#b-qnote"), invoiceNote: v("#b-inote"), leadMsg: v("#b-lnote"), remindMsg: v("#b-rnote")}));
+      followUpDays: num(v("#b-fu")) || 3, validDays: num(v("#b-valid")) || 30, quoteNote: v("#b-qnote"), invoiceNote: v("#b-inote"), leadMsg: v("#b-lnote"), remindMsg: v("#b-rnote"), reviewLink: v("#b-revlink").trim(), reviewMsg: v("#b-revmsg")}));
     toast("Details saved");
   },
   faConnect: () => faConnect(),
@@ -1268,6 +1299,8 @@ const ACTIONS = {
     importRows = null; toast("Imported " + n + " lead" + (n === 1 ? "" : "s")); go("today");
   },
   signOut: async () => { await sb.auth.signOut(); },
+  skipReview: async (el, id) => { await put("customers", Object.assign({}, S.customers[id], {reviewSkipped: true})); toast("Won't ask for a review"); render(); },
+  unaskReview: async (el, id) => { const c = Object.assign({}, S.customers[id]); delete c.reviewAskedOn; delete c.reviewSkipped; await put("customers", c); render(); },
   closeLead: async (el, id) => { await put("customers", Object.assign({}, S.customers[id], {stage: "closed"})); toast("Removed from new leads"); render(); },
   csv: () => {
     const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
