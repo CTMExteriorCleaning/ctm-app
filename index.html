@@ -296,7 +296,7 @@ const biz = () => Object.assign({
 }, S.settings.business || {});
 async function nextNumber(kind){
   const c = Object.assign({quote: 0, invoice: 0}, S.settings.counters || {});
-  const existing = Object.values(kind === "quote" ? S.quotes : S.invoices).map(r => parseInt(String(r.number || "").replace(/\D/g, ""), 10) || 0);
+  const existing = Object.values(kind === "quote" ? S.quotes : S.invoices).map(r => parseInt(String(r.appNumber || r.number || "").replace(/\D/g, ""), 10) || 0);
   const n = Math.max(c[kind] || 0, ...existing, 0) + 1;
   c[kind] = n; delete c.id;
   await put("settings", Object.assign({id: "counters"}, c));
@@ -437,24 +437,38 @@ async function faSend(id, quiet){
   try {
     const r = await faCall("send", {invoice: faInvoice(i), customer: {name: c.name, email: c.email, phone: c.phone, address: c.address, postcode: c.postcode, freeagentContact: c.freeagentContact}});
     if (r.contactUrl && r.contactUrl !== c.freeagentContact) await put("customers", Object.assign({}, S.customers[c.id], {freeagentContact: r.contactUrl}));
-    const sent = Object.assign({}, S.invoices[id], {freeagentUrl: r.invoiceUrl, freeagentSentAt: new Date().toISOString()}); delete sent.freeagentError;
+    const sent = faRenumber(Object.assign({}, S.invoices[id], {freeagentUrl: r.invoiceUrl, freeagentSentAt: new Date().toISOString()}), r.reference); delete sent.freeagentError;
     await put("invoices", sent);
-    toast(i.number + " sent to FreeAgent");
+    toast("Sent to FreeAgent as " + sent.number);
   } catch (e) {
     await put("invoices", Object.assign({}, S.invoices[id], {freeagentError: e.message})).catch(() => {});
     toast("FreeAgent: " + e.message);
   } finally { faBusy.delete(id); render(); }
 }
 // Ask FreeAgent which of our unpaid invoices it has matched to a payment (e.g. from Mettle).
+// Use FreeAgent's invoice number, keeping the app's own one as appNumber.
+function faRenumber(inv, ref){
+  if (!ref) return inv;
+  if (ref !== inv.number) { if (!inv.appNumber) inv.appNumber = inv.number; inv.number = ref; }
+  inv.freeagentRef = ref;
+  return inv;
+}
 async function faCheckPayments(quiet){
-  const open = Object.values(S.invoices).filter(i => i.status !== "paid" && i.freeagentUrl);
+  const open = Object.values(S.invoices).filter(i => i.freeagentUrl && (i.status !== "paid" || !i.freeagentRef));
   if (!open.length) { if (!quiet) toast("No unpaid invoices in FreeAgent to check."); return; }
   try {
-    const {paid} = await faCall("check", {urls: open.map(i => i.freeagentUrl)});
-    let n = 0;
-    for (const i of open) if (paid[i.freeagentUrl]) { await put("invoices", Object.assign({}, S.invoices[i.id], {status: "paid", paidOn: paid[i.freeagentUrl], paidBy: "Bank transfer (FreeAgent)"})); n++; }
+    const {paid, refs = {}} = await faCall("check", {urls: open.map(i => i.freeagentUrl)});
+    let n = 0, changed = false;
+    for (const i of open) {
+      const u = i.freeagentUrl, cur = S.invoices[i.id], ref = refs[u];
+      const nowPaid = cur.status !== "paid" && paid[u];
+      if (!nowPaid && (!ref || ref === cur.freeagentRef)) continue;
+      const next = faRenumber(Object.assign({}, cur), ref);
+      if (nowPaid) { Object.assign(next, {status: "paid", paidOn: paid[u], paidBy: "Bank transfer (FreeAgent)"}); n++; }
+      await put("invoices", next); changed = true;
+    }
     if (n || !quiet) toast(n ? n + " invoice" + (n > 1 ? "s" : "") + " marked paid from FreeAgent" : "No new payments in FreeAgent yet.");
-    if (n) render();
+    if (changed) render();
   } catch (e) { if (!quiet || e.status === 401) toast("FreeAgent: " + e.message); }
 }
 function faPanel(i){
