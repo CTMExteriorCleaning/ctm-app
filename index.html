@@ -367,6 +367,7 @@ function go(name, extra){
 const EDITORS = new Set(["quoteEdit","customerEdit","invoiceEdit","job","business"]);
 function onData(){
   if (loaded.size < COLS.length) return;
+  if (!faStarted) { faStarted = true; faStartup(); }
   if (EDITORS.has(view.name) && view.rendered) { renderTabs(); return; }
   if (document.querySelector("#bookbox > *, .confirm, .panel > textarea")) { renderTabs(); return; }
   render(false);
@@ -384,6 +385,85 @@ function render(fresh){
   $("#app").innerHTML = banner + fn();
   view.rendered = true;
   if (view.after) { const a = view.after; view.after = null; a(); }
+}
+
+/* ---------- FreeAgent ---------- */
+// The website's /api/freeagent function talks to FreeAgent. It hands back a sealed
+// token, which we keep in settings (doc "freeagent") and send with each request.
+const fa = () => Object.assign({autoSend: true}, S.settings.freeagent || {});
+let faStarted = false, faReturn = null, faBusy = new Set();
+(function readFreeAgentReturn(){
+  const h = new URLSearchParams((location.hash || "").slice(1));
+  if (!h.has("fa") && !h.has("fa_error")) return;
+  faReturn = {token: h.get("fa"), state: h.get("state"), error: h.get("fa_error")};
+  try { history.replaceState(null, "", location.pathname + "#business"); } catch (e) {}
+})();
+async function faCall(action, body){
+  const res = await fetch("/api/freeagent", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(Object.assign({action, token: fa().token}, body || {}))});
+  const j = await res.json().catch(() => ({error: "The website couldn't reach FreeAgent. Try again in a minute."}));
+  if (j.token) await put("settings", Object.assign({}, fa(), {id: "freeagent", token: j.token}));
+  if (!res.ok) { const e = new Error(j.error || "FreeAgent didn't respond."); e.status = res.status; throw e; }
+  return j;
+}
+function faConnect(){
+  const state = uid() + uid();
+  try { sessionStorage.setItem("faState", state); } catch (e) {}
+  location.href = "/api/freeagent?start=" + encodeURIComponent(state);
+}
+async function faStartup(){
+  if (faReturn) {
+    const r = faReturn; faReturn = null; let expected = null;
+    try { expected = sessionStorage.getItem("faState"); sessionStorage.removeItem("faState"); } catch (e) {}
+    if (r.error) toast("FreeAgent: " + r.error);
+    else if (r.token && expected && r.state === expected) {
+      await put("settings", Object.assign({}, fa(), {id: "freeagent", token: r.token, connectedAt: new Date().toISOString()}));
+      try { const {company, web} = await faCall("status"); await put("settings", Object.assign({}, fa(), {id: "freeagent", company, web})); toast("Connected to FreeAgent" + (company ? " (" + company + ")" : "")); }
+      catch (e) { toast("FreeAgent: " + e.message); }
+    } else toast("That FreeAgent sign-in didn't come from this app. Try Connect again.");
+    go("business");
+  }
+  if (fa().token) faCheckPayments(true);
+}
+// Turn an app invoice into the plain lines FreeAgent needs.
+function faInvoice(i){
+  const t = totals(i);
+  return {number: i.number, date: i.date, dueDate: i.dueDate, notes: i.notes, vatOn: t.vatOn, vatRate: t.vatRate, discount: t.disc,
+    items: (i.lines || []).map(l => { const x = lineText(l); return {description: (l.name || "Service") + (x ? " (" + x + ")" : ""), amount: lineAmount(l).amount}; })};
+}
+async function faSend(id, quiet){
+  const i = S.invoices[id]; if (!i || i.freeagentUrl || faBusy.has(id) || !fa().token) return;
+  const c = S.customers[i.customerId]; if (!c) { toast("This invoice has no customer to send to FreeAgent."); return; }
+  faBusy.add(id); if (!quiet) render();
+  try {
+    const r = await faCall("send", {invoice: faInvoice(i), customer: {name: c.name, email: c.email, phone: c.phone, address: c.address, postcode: c.postcode, freeagentContact: c.freeagentContact}});
+    if (r.contactUrl && r.contactUrl !== c.freeagentContact) await put("customers", Object.assign({}, S.customers[c.id], {freeagentContact: r.contactUrl}));
+    const sent = Object.assign({}, S.invoices[id], {freeagentUrl: r.invoiceUrl, freeagentSentAt: new Date().toISOString()}); delete sent.freeagentError;
+    await put("invoices", sent);
+    toast(i.number + " sent to FreeAgent");
+  } catch (e) {
+    await put("invoices", Object.assign({}, S.invoices[id], {freeagentError: e.message})).catch(() => {});
+    toast("FreeAgent: " + e.message);
+  } finally { faBusy.delete(id); render(); }
+}
+// Ask FreeAgent which of our unpaid invoices it has matched to a payment (e.g. from Mettle).
+async function faCheckPayments(quiet){
+  const open = Object.values(S.invoices).filter(i => i.status !== "paid" && i.freeagentUrl);
+  if (!open.length) { if (!quiet) toast("No unpaid invoices in FreeAgent to check."); return; }
+  try {
+    const {paid} = await faCall("check", {urls: open.map(i => i.freeagentUrl)});
+    let n = 0;
+    for (const i of open) if (paid[i.freeagentUrl]) { await put("invoices", Object.assign({}, S.invoices[i.id], {status: "paid", paidOn: paid[i.freeagentUrl], paidBy: "Bank transfer (FreeAgent)"})); n++; }
+    if (n || !quiet) toast(n ? n + " invoice" + (n > 1 ? "s" : "") + " marked paid from FreeAgent" : "No new payments in FreeAgent yet.");
+    if (n) render();
+  } catch (e) { if (!quiet || e.status === 401) toast("FreeAgent: " + e.message); }
+}
+function faPanel(i){
+  const f = fa(); if (!f.token) return "";
+  const open = f.web && i.freeagentUrl ? f.web + "/invoices/" + i.freeagentUrl.split("/").pop() : "";
+  if (i.freeagentUrl) return `<section class="panel"><div class="row"><span>In FreeAgent since ${fmtDate((i.freeagentSentAt || "").slice(0, 10))}${i.status !== "paid" ? ". It'll show as paid here once FreeAgent matches the payment." : "."}</span><span class="spacer"></span>${open ? `<a class="btn sm" href="${esc(open)}" target="_blank" rel="noopener">Open in FreeAgent</a>` : ""}</div>
+    ${i.freeagentSentAt && i.updatedAt > i.freeagentSentAt && i.updatedAt.slice(0, 16) !== i.freeagentSentAt.slice(0, 16) && i.status !== "paid" ? `<p class="hint">If you changed the invoice after sending it, make the same change in FreeAgent.</p>` : ""}</section>`;
+  return `<section class="panel"><div class="row"><span>${i.freeagentError ? "Couldn't send to FreeAgent: " + esc(i.freeagentError) : "Not in FreeAgent yet."}</span><span class="spacer"></span>
+    <button class="btn primary" data-act="faSend" data-id="${i.id}" ${faBusy.has(i.id) ? "disabled" : ""}>${faBusy.has(i.id) ? "Sending…" : i.freeagentError ? "Try again" : "Send to FreeAgent"}</button></div></section>`;
 }
 
 /* ---------- views ---------- */
@@ -762,6 +842,7 @@ VIEWS.invoice = function(){
     ${i.status !== "paid" ? `<label class="f" style="flex-direction:row;align-items:center;gap:8px">Paid on <input type="date" id="paidOn" value="${today()}" style="width:auto"></label><select id="paidBy" style="width:auto"><option>Bank transfer</option><option>Cash</option><option>Card</option><option>Cheque</option></select><button class="btn primary" data-act="markPaid" data-id="${i.id}">Mark as paid</button>` : `<span>Paid ${fmtLong(i.paidOn)}${i.paidBy ? " by " + esc(i.paidBy) : ""}</span><button class="btn sm" data-act="markUnpaid" data-id="${i.id}">Mark unpaid</button>`}
     ${i.quoteId && S.quotes[i.quoteId] ? `<button class="btn" data-open="quote" data-id="${i.quoteId}">From quote ${esc(S.quotes[i.quoteId].number)}</button>` : ""}
     <span class="spacer"></span><span id="deli"><button class="btn sm ghost danger" data-act="askDel" data-kind="invoices" data-id="${i.id}">Delete</button></span></div></section>
+  ${faPanel(i)}
   <section class="panel"><h3>Send to ${esc(c.name)}</h3>${sendBar("invoice", i)}</section>
   ${docHTML("invoice", i)}`;
 };
@@ -798,11 +879,12 @@ async function saveInvoice(){
   d.lines = d.lines.filter(l => l.name || l.serviceId);
   if (!d.lines.length) { toast("Add at least one line."); return; }
   if (!d.number) d.number = await nextNumber("invoice");
-  delete d.kind;
+  delete d.kind; delete d.freeagentError;
   const id = await put("invoices", d);
   if (d.quoteId && S.quotes[d.quoteId]) await put("quotes", Object.assign({}, S.quotes[d.quoteId], {invoiceId: id}));
   if (d.jobId && S.jobs[d.jobId]) await put("jobs", Object.assign({}, S.jobs[d.jobId], {invoiceId: id}));
   toast("Invoice " + d.number + " saved"); draft = null; go("invoice", {id});
+  if (fa().token && fa().autoSend && !S.invoices[id].freeagentUrl) faSend(id, true);
 }
 
 /* calendar */
@@ -890,6 +972,12 @@ VIEWS.business = function(){
     <label class="f">VAT rate (%)<input type="number" id="b-vatrate" value="${esc(b.vatRate)}"></label>
     <label class="f">VAT number<input type="text" id="b-vatno" value="${esc(b.vatNo)}"></label>
   </div></section>
+  <section class="panel"><h2>FreeAgent</h2>
+    ${fa().token ? `<p>Connected${fa().company ? " to <b>" + esc(fa().company) + "</b>" : ""}. Invoices go to FreeAgent with the customer as a contact, and when FreeAgent matches a payment from your bank, the invoice is marked paid here.</p>
+    <label class="f check" style="flex-direction:row;margin-top:10px"><input type="checkbox" id="fa-auto" ${fa().autoSend ? "checked" : ""}> Send new invoices to FreeAgent as soon as I save them</label>
+    <div class="row" style="margin-top:10px"><button class="btn" data-act="faCheck">Check for payments now</button><span class="spacer"></span><button class="btn ghost danger sm" data-act="faDisconnect">Disconnect</button></div>`
+    : `<p class="hint">Connect your FreeAgent account so invoices you make here are created in FreeAgent too, and payments FreeAgent matches from your bank show as paid here.</p>
+    <div class="row" style="margin-top:8px"><button class="btn primary" data-act="faConnect">Connect FreeAgent</button></div>`}</section>
   <section class="panel"><h2>Quotes and follow-ups</h2><div class="fields">
     <label class="f">Follow up sent quotes after (days)<input type="number" id="b-fu" value="${esc(b.followUpDays)}"></label>
     <label class="f">Quotes valid for (days)<input type="number" id="b-valid" value="${esc(b.validDays)}"></label>
@@ -1020,6 +1108,7 @@ document.addEventListener("input", ev => {
 });
 document.addEventListener("change", ev => {
   const t = ev.target;
+  if (t.id === "fa-auto") { put("settings", Object.assign({}, fa(), {id: "freeagent", autoSend: t.checked})).then(() => toast(t.checked ? "New invoices will go to FreeAgent" : "Send invoices to FreeAgent yourself from each invoice")); return; }
   if (t.dataset.l != null && draft) {
     const i = +t.dataset.l;
     if (t.dataset.k === "serviceId") { readDraftTop(); const svc = S.services[t.value]; const old = draft.lines[i]; draft.lines[i] = Object.assign(newLine(svc || null), {measure: old.measure, note: old.note}); render(); return; }
@@ -1120,6 +1209,10 @@ const ACTIONS = {
       followUpDays: num(v("#b-fu")) || 3, validDays: num(v("#b-valid")) || 30, quoteNote: v("#b-qnote"), invoiceNote: v("#b-inote")}));
     toast("Details saved");
   },
+  faConnect: () => faConnect(),
+  faSend: (el, id) => faSend(id),
+  faCheck: () => faCheckPayments(false),
+  faDisconnect: async () => { const f = fa(); delete f.token; delete f.company; delete f.web; delete f.connectedAt; await put("settings", Object.assign(f, {id: "freeagent"})); toast("Disconnected from FreeAgent"); render(); },
   clearLogo: async () => { await put("settings", Object.assign({}, biz(), {id: "business", logo: ""})); render(); },
   addSvc: async () => { readSvcs(); const order = Object.keys(S.services).length + 1; await put("services", {name: "New service", unit: "m2", rate: 0, min: 0, order, active: true}); render(); },
   saveSvcs: async () => { readSvcs(); for (const s of Object.values(S.services)) await put("services", s); toast("Prices saved"); render(); },

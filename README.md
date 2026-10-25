@@ -36,3 +36,18 @@ Then either:
   Use the field names `full_name`, `phone_number`, `email`, `street_address`, `post_code`, `service`.
 - **Meta webhook (direct)**: in a Meta developer app, subscribe the Page to the `leadgen` webhook, using the function URL and a verify token.
   Then also set `META_VERIFY_TOKEN`, `META_APP_SECRET` and `META_PAGE_TOKEN` (a Page token with `leads_retrieval`).
+
+## FreeAgent (optional)
+
+Invoices can be created in FreeAgent automatically, with the customer added as a FreeAgent contact (an existing contact with the same email or name is reused).
+The app also checks FreeAgent for payments it has matched from your bank and marks those invoices paid.
+
+The connection runs in a Netlify function (`netlify/functions/freeagent.mjs`), which deploys with the site.
+
+1. At [dev.freeagent.com](https://dev.freeagent.com), sign in and create an app.
+   Set its **OAuth redirect URI** to `https://<your-site>/api/freeagent`.
+2. In Netlify, under **Site configuration → Environment variables**, add `FREEAGENT_CLIENT_ID` (the app's OAuth identifier) and `FREEAGENT_CLIENT_SECRET` (its OAuth secret).
+   Then redeploy (**Deploys → Trigger deploy**).
+3. In the app, go to **Business → FreeAgent → Connect FreeAgent** and approve access.
+
+Set `FREEAGENT_SANDBOX=true` as well to try it against a FreeAgent sandbox account first.
