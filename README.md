@@ -40,6 +40,7 @@ Then either:
 ## FreeAgent (optional)
 
 Invoices can be created in FreeAgent automatically, with the customer added as a FreeAgent contact (an existing contact with the same email or name is reused).
+FreeAgent numbers each invoice in its own sequence, and the app switches the invoice to that number.
 The app also checks FreeAgent for payments it has matched from your bank and marks those invoices paid.
 
 The connection runs in a Netlify function (`netlify/functions/freeagent.mjs`), which deploys with the site.

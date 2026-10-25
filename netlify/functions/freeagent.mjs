@@ -155,7 +155,8 @@ const ACTIONS = {
       body: JSON.stringify({
         invoice: {
           contact,
-          reference: invoice.number,
+          // No reference: FreeAgent gives it the next number in its own sequence,
+          // and the app takes that number back.
           dated_on: invoice.date,
           payment_terms_in_days: days(invoice.date, invoice.dueDate || invoice.date),
           currency: "GBP",
@@ -169,19 +170,21 @@ const ACTIONS = {
     return { invoiceUrl: created.url, contactUrl: contact, reference: created.reference };
   },
 
-  // body.urls: FreeAgent invoice URLs. Returns the ones FreeAgent has as paid.
+  // body.urls: FreeAgent invoice URLs. Returns each one's FreeAgent number,
+  // and the ones FreeAgent has as paid.
   async check({ fa }, { urls }) {
-    const paid = {};
+    const paid = {}, refs = {};
     for (const url of (urls || []).slice(0, 50)) {
       if (!String(url).startsWith(API + "/invoices/")) continue;
       try {
         const { invoice } = await fa(url);
+        if (invoice.reference) refs[url] = invoice.reference;
         if (/^(paid|overpaid)$/i.test(invoice.status)) paid[url] = invoice.paid_on || new Date().toISOString().slice(0, 10);
       } catch (e) {
         if (e.status === 401) throw e;
       }
     }
-    return { paid };
+    return { paid, refs };
   },
 };
 
