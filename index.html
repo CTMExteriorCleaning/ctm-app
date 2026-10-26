@@ -99,6 +99,8 @@ main{max-width:1100px;margin:0 auto;padding-block:22px 48px;
 .item .d{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .amt{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500;text-align:right;white-space:nowrap}
 .empty{color:var(--muted);padding:14px 4px;font-size:14px}
+.stopn{flex:none;width:28px;height:28px;border-radius:99px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-mono);font-weight:500;font-size:13px}
+.stop{gap:8px}
 
 .pill{display:inline-block;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:99px;white-space:nowrap;background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
 .pill.draft{} .pill.sent{background:var(--accent-soft);color:var(--accent);border-color:transparent}
@@ -397,7 +399,7 @@ const TABS = [
   ["invoices","Invoices",'<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>'],
   ["business","Business",'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3.6 15H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.7 4.4V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>']
 ];
-const TAB_OF = {importLeads: "customers", quote: "quotes", quoteEdit: "quotes", customer: "customers", customerEdit: "customers", invoice: "invoices", invoiceEdit: "invoices", job: "calendar"};
+const TAB_OF = {importLeads: "customers", quote: "quotes", quoteEdit: "quotes", customer: "customers", customerEdit: "customers", invoice: "invoices", invoiceEdit: "invoices", job: "calendar", route: "calendar"};
 function go(name, extra){
   view = Object.assign({name}, extra || {});
   if (TABS.some(t => t[0] === name)) { try { history.replaceState(null, "", "#" + name); } catch (e) {} }
@@ -557,7 +559,7 @@ VIEWS.today = function(){
       ${fu.map(q => { const c = cust(q.customerId); return `<div class="item" data-open="quote" data-id="${q.id}"><div class="main"><div class="t">${esc(c.name)} <span class="pill sent">Quote follow-up</span></div><div class="d">${esc(q.number)} · sent ${fmtDate(q.sentOn)} · ${esc(c.phone || "no phone")}</div></div><div class="amt">${gbp(totals(q).total)}</div></div>`; }).join("")}
       ${ch.map(i => { const c = cust(i.customerId); return `<div class="item" data-open="invoice" data-id="${i.id}"><div class="main"><div class="t">${esc(c.name)} <span class="pill overdue">Payment due</span></div><div class="d">${esc(i.number)} · due ${fmtDate(i.dueDate)} (${daysBetween(i.dueDate, t)} days ago)</div></div><div class="amt">${gbp(totals(i).total)}</div></div>`; }).join("")}
       </div></section>
-    <section class="panel"><div class="row"><h2>Next 7 days</h2><span class="spacer"></span><button class="btn sm" data-act="newJob">Book a job</button></div>
+    <section class="panel"><div class="row"><h2>Next 7 days</h2><span class="spacer"></span><button class="btn sm" data-act="route" data-date="${t}">Today's route</button><button class="btn sm" data-act="newJob">Book a job</button></div>
       <div class="list">
       ${late.length ? `<div class="item" data-tab="calendar"><div class="main"><div class="t" style="color:var(--warn)">${late.length} past job${late.length > 1 ? "s" : ""} not marked done</div><div class="d">Open the calendar to tick them off or invoice them.</div></div></div>` : ""}
       ${jobsAhead.length ? jobsAhead.map(jobRow).join("") : `<div class="empty">No jobs booked this week. Accept a quote to book it in, or book a repeat clean from a customer.</div>`}
@@ -974,7 +976,7 @@ VIEWS.calendar = function(){
     <div class="row"><button class="btn" data-cal="-1" aria-label="Previous month">‹</button><button class="btn" data-cal="0">Today</button><button class="btn" data-cal="1" aria-label="Next month">›</button><button class="btn primary" data-act="newJob">Book a job</button></div></div>
   <section class="panel"><div class="cal">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => `<div class="dow">${d}</div>`).join("")}${cells.join("")}</div>
     <div class="row hint" style="margin-top:10px"><span class="pill job">Job</span><span class="pill due">Follow-up</span><span class="pill overdue">Invoice due</span></div></section>
-  <section class="panel"><h3>${fmtLong(calSel)}</h3><div class="list">${sel.length ? sel.map(e => e.open === "job" ? jobRow(S.jobs[e.id]) : `<div class="item" data-open="${e.open}" data-id="${e.id}"><div class="main"><div class="t">${esc(e.label)}</div></div><span class="pill ${e.cls === "fu" ? "due" : "overdue"}">${e.cls === "fu" ? "Follow-up" : "Invoice"}</span></div>`).join("") : `<div class="empty">Nothing on this day.</div>`}</div></section>`;
+  <section class="panel"><div class="row"><h3>${fmtLong(calSel)}</h3><span class="spacer"></span>${sel.some(e => e.open === "job") ? `<button class="btn sm" data-act="route" data-date="${calSel}">Plan route</button>` : ""}</div><div class="list">${sel.length ? sel.map(e => e.open === "job" ? jobRow(S.jobs[e.id]) : `<div class="item" data-open="${e.open}" data-id="${e.id}"><div class="main"><div class="t">${esc(e.label)}</div></div><span class="pill ${e.cls === "fu" ? "due" : "overdue"}">${e.cls === "fu" ? "Follow-up" : "Invoice"}</span></div>`).join("") : `<div class="empty">Nothing on this day.</div>`}</div></section>`;
 };
 let jdraft = null;
 VIEWS.job = function(){
@@ -1010,6 +1012,116 @@ function readJobForm(){
   Object.assign(jdraft, {customerId: $("#j-customer").value, title: $("#j-title").value.trim(), price: num($("#j-price").value), date: $("#j-date").value || today(), time: $("#j-time").value, hours: num($("#j-hours").value), repeatWeeks: num($("#j-repeat").value), notes: $("#j-notes").value});
 }
 
+/* route planner */
+// Postcodes are turned into map points by postcodes.io (free, no key). Stops are put in
+// order nearest-first from the start point, then tidied with 2-opt so the route doesn't cross itself.
+let routeDate = today(), routeBusy = false;
+const GEO = {};
+const PC_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
+const pcOf = s => { const m = String(s || "").match(PC_RE); return m ? (m[1] + " " + m[2]).toUpperCase() : ""; };
+const custPc = c => pcOf(c.postcode) || pcOf(c.address);
+function custPlace(c){
+  const a = String(c.address || "").replace(/\s*\n\s*/g, ", ").trim(), p = String(c.postcode || "").trim();
+  return a && p && !a.toUpperCase().replace(/\s/g, "").includes(p.toUpperCase().replace(/\s/g, "")) ? a + ", " + p : a || p;
+}
+function routeStart(){ const b = biz(); return String(b.routeStart || "").trim() || String(b.address || "").replace(/\s*\n\s*/g, ", ").trim(); }
+function routeJobs(d){
+  return Object.values(S.jobs).filter(j => j.date === d).sort((a, b) => (num(a.stop) || 999) - (num(b.stop) || 999) || (a.time || "").localeCompare(b.time || ""));
+}
+async function geocode(pcs){
+  const need = [...new Set(pcs.filter(p => p && !(p in GEO)))];
+  for (let i = 0; i < need.length; i += 100){
+    const res = await fetch("https://api.postcodes.io/postcodes", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({postcodes: need.slice(i, i + 100)})});
+    const out = await res.json();
+    (out.result || []).forEach(r => { GEO[r.query] = r.result ? {lat: r.result.latitude, lng: r.result.longitude} : null; });
+  }
+  // A new or retired postcode isn't found, so fall back to the middle of its area (e.g. "PE1").
+  for (const p of need.filter(p => !GEO[p])){
+    try { const r = await (await fetch("https://api.postcodes.io/outcodes/" + encodeURIComponent(p.split(" ")[0]))).json(); GEO[p] = r.result ? {lat: r.result.latitude, lng: r.result.longitude} : null; } catch (e) { GEO[p] = null; }
+  }
+}
+function miles(a, b){
+  const R = 3959, rad = x => x * Math.PI / 180, dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function orderStops(stops, home, back){
+  // stops: [{g: {lat, lng}, ...}]. Nearest-neighbour from home (or the first stop), then 2-opt.
+  const left = stops.slice(), seq = [];
+  let at = home || (left.length ? left[0].g : null);
+  while (left.length){ let k = 0; left.forEach((s, i) => { if (miles(at, s.g) < miles(at, left[k].g)) k = i; }); at = left[k].g; seq.push(left.splice(k, 1)[0]); }
+  const len = r => { let t = home && r.length ? miles(home, r[0].g) : 0; for (let i = 1; i < r.length; i++) t += miles(r[i - 1].g, r[i].g); if (home && back && r.length) t += miles(r[r.length - 1].g, home); return t; };
+  let best = seq, bestLen = len(seq), better = true;
+  while (better){
+    better = false;
+    for (let i = 0; i < best.length - 1; i++) for (let k = i + 1; k < best.length; k++){
+      const c = best.slice(0, i).concat(best.slice(i, k + 1).reverse(), best.slice(k + 1)); const l = len(c);
+      if (l < bestLen - 1e-9) { best = c; bestLen = l; better = true; }
+    }
+  }
+  return {seq: best, miles: bestLen};
+}
+async function saveStops(list){ for (let i = 0; i < list.length; i++) if (num(list[i].stop) !== i + 1) await put("jobs", Object.assign({}, list[i], {stop: i + 1})); }
+async function autoRoute(){
+  const all = routeJobs(routeDate), done = all.filter(j => j.done), todo = all.filter(j => !j.done);
+  const basePc = pcOf(routeStart());
+  routeBusy = true; render();
+  try { await geocode([basePc].concat(todo.map(j => custPc(cust(j.customerId))))); }
+  catch (e) { routeBusy = false; render(); toast("Couldn't look up postcodes. Check your signal and try again."); return; }
+  const home = basePc ? GEO[basePc] : null;
+  const pts = todo.map(j => ({j, g: GEO[custPc(cust(j.customerId))]}));
+  const missing = pts.filter(p => !p.g);
+  const {seq, miles: m} = orderStops(pts.filter(p => p.g), home, biz().routeReturn !== false);
+  await saveStops(done.concat(seq.map(p => p.j), missing.map(p => p.j)));
+  routeBusy = false; render();
+  toast(missing.length ? missing.length + " stop" + (missing.length > 1 ? "s" : "") + " couldn't be found from the postcode, so went to the end. Move them with ↑ ↓" : "Sorted. About " + Math.round(m * 1.3) + " miles of driving");
+}
+function mapsUrl(origin, places){
+  const e = encodeURIComponent;
+  let u = "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" + e(places[places.length - 1]);
+  if (origin) u += "&origin=" + e(origin);
+  if (places.length > 1) u += "&waypoints=" + places.slice(0, -1).map(e).join("%7C");
+  return u;
+}
+function routeLegs(list){
+  // Google Maps takes a start, up to 9 stops in between and a finish, so long days are split into parts.
+  const todo = list.filter(j => !j.done && custPlace(cust(j.customerId)));
+  const base = routeStart(), back = biz().routeReturn !== false && base;
+  const places = todo.map(j => custPlace(cust(j.customerId))).concat(back ? [base] : []);
+  const legs = []; let origin = list.some(j => j.done) ? "" : base;
+  for (let i = 0; i < places.length; i += 10){
+    const chunk = places.slice(i, i + 10), to = Math.min(i + chunk.length, todo.length), home = back && i + chunk.length > todo.length;
+    legs.push({url: mapsUrl(origin, chunk), label: (to > i ? (i + 1 === to ? "stop " + to : "stops " + (i + 1) + " to " + to) : "") + (home ? (to > i ? ", then home" : "home") : "")});
+    origin = chunk[chunk.length - 1];
+  }
+  return legs;
+}
+function stopRow(j, i, n){
+  const c = cust(j.customerId), place = custPlace(c);
+  return `<div class="item stop" style="cursor:default${j.done ? ";opacity:.6" : ""}"><span class="stopn">${i + 1}</span>
+    <div class="main"><a href="#" class="t" data-open="job" data-id="${j.id}" style="display:block;color:inherit;text-decoration:none">${esc(c.name)} · ${esc(j.title || "Clean")}</a>
+    <div class="d">${j.time ? esc(j.time) + " · " : ""}${place ? esc(place) : '<span style="color:var(--warn)">No address or postcode</span>'}</div></div>
+    ${j.done ? '<span class="pill done">Done</span>' : place ? `<a class="btn sm" href="${esc(mapsUrl("", [place]))}" target="_blank" rel="noopener">Go</a>` : ""}
+    <button class="btn sm" data-act="routeMove" data-id="${j.id}" data-dir="-1" aria-label="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
+    <button class="btn sm" data-act="routeMove" data-id="${j.id}" data-dir="1" aria-label="Move down" ${i === n - 1 ? "disabled" : ""}>↓</button></div>`;
+}
+VIEWS.route = function(){
+  const list = routeJobs(routeDate), base = routeStart(), legs = routeLegs(list);
+  const left = list.filter(j => !j.done).length;
+  return `<div class="head"><div><h1>Route</h1><p>${fmtLong(routeDate)} · ${list.length} job${list.length === 1 ? "" : "s"}${list.length && left < list.length ? ", " + left + " left" : ""}</p></div>
+    <div class="row"><button class="btn" data-act="routeDay" data-dir="-1" aria-label="Previous day">‹</button><input type="date" id="r-date" value="${esc(routeDate)}" style="width:auto"><button class="btn" data-act="routeDay" data-dir="1" aria-label="Next day">›</button></div></div>
+  <section class="panel">
+    <div class="row"><span class="hint">Start${biz().routeReturn !== false ? " and finish" : ""}: ${base ? `<b>${esc(base)}</b>` : "your current location"}</span>${base && !pcOf(base) ? `<span class="hint" style="color:var(--warn)">(no postcode, so it can't be used for sorting)</span>` : ""}<span class="spacer"></span><button class="btn sm ghost" data-tab="business">Change</button></div>
+    <label class="f check" style="flex-direction:row;margin-top:8px"><input type="checkbox" id="r-home" ${biz().routeReturn !== false ? "checked" : ""}> Finish back at the start</label>
+    <div class="row" style="margin-top:12px"><button class="btn" data-act="autoRoute" ${list.filter(j => !j.done).length < 2 || routeBusy ? "disabled" : ""}>${routeBusy ? "Sorting…" : "Sort into best order"}</button>
+      ${legs.length === 1 ? `<a class="btn primary" href="${esc(legs[0].url)}" target="_blank" rel="noopener">Open in Google Maps</a>` : legs.map((l, i) => `<a class="btn primary" href="${esc(l.url)}" target="_blank" rel="noopener">Part ${i + 1}: ${esc(l.label)}</a>`).join("")}</div>
+    ${legs.length > 1 ? `<p class="hint" style="margin-top:8px">Google Maps only takes 10 stops at a time, so drive Part 1 first, then come back here and tap Part 2.</p>` : ""}
+  </section>
+  <section class="panel"><h2>Stops in order</h2>
+    <p class="hint">Use ↑ and ↓ to move a stop. Tap Go to get directions to just that one.</p>
+    <div class="list">${list.length ? list.map((j, i) => stopRow(j, i, list.length)).join("") : `<div class="empty">No jobs booked on this day. Pick another day above, or book a job from the Calendar.</div>`}</div></section>`;
+};
+
 /* business */
 VIEWS.business = function(){
   const b = biz();
@@ -1022,6 +1134,7 @@ VIEWS.business = function(){
     <label class="f">Email<input type="email" id="b-email" value="${esc(b.email)}"></label>
     <label class="f">Website<input type="text" id="b-website" value="${esc(b.website)}"></label>
     <label class="f wide">Address<textarea id="b-address" style="min-height:56px">${esc(b.address)}</textarea></label>
+    <label class="f wide">Where your working day starts (for the route planner). Leave blank to use the address above. Include the postcode.<input type="text" id="b-rstart" value="${esc(b.routeStart)}" placeholder="e.g. 12 High Street, PE1 1AA"></label>
     <label class="f">Logo (PNG or JPG, under 150 KB)<input type="file" id="b-logo" accept="image/png,image/jpeg"></label>
     <div class="row">${b.logo ? `<img src="${esc(b.logo)}" alt="Current logo" style="max-height:48px"><button class="btn sm ghost danger" data-act="clearLogo">Remove logo</button>` : `<span class="hint">No logo yet. Your business name shows instead.</span>`}</div>
   </div></section>
@@ -1183,6 +1296,8 @@ document.addEventListener("input", ev => {
 });
 document.addEventListener("change", ev => {
   const t = ev.target;
+  if (t.id === "r-date" && t.value) { routeDate = t.value; render(); return; }
+  if (t.id === "r-home") { put("settings", Object.assign({}, biz(), {id: "business", routeReturn: t.checked})).then(() => render()); return; }
   if (t.id === "fa-auto") { put("settings", Object.assign({}, fa(), {id: "freeagent", autoSend: t.checked})).then(() => toast(t.checked ? "New invoices will go to FreeAgent" : "Send invoices to FreeAgent yourself from each invoice")); return; }
   if (t.dataset.l != null && draft) {
     const i = +t.dataset.l;
@@ -1266,6 +1381,10 @@ const ACTIONS = {
     if (!c.name) { toast("Add the customer's name."); return; }
     const id = await put("customers", c); cdraft = null; toast("Saved " + c.name); go("customer", {id});
   },
+  route: (el) => { routeDate = el.dataset.date || today(); go("route"); },
+  routeDay: (el) => { routeDate = addDays(routeDate, Number(el.dataset.dir)); render(); },
+  autoRoute: () => autoRoute(),
+  routeMove: async (el, id) => { const list = routeJobs(routeDate), i = list.findIndex(j => j.id === id), k = i + Number(el.dataset.dir); if (i < 0 || k < 0 || k >= list.length) return; [list[i], list[k]] = [list[k], list[i]]; await saveStops(list); render(); },
   newJob: () => { jdraft = {customerId: "", title: "", price: "", date: view.name === "calendar" ? calSel : addDays(today(), 1), time: "09:00", hours: 2, repeatWeeks: 0, notes: "", done: false}; go("job"); },
   cancelJob: () => { jdraft = null; go("calendar"); },
   saveJob: async () => { readJobForm(); if (!jdraft.customerId) { toast("Choose a customer first."); return; } const id = await put("jobs", jdraft); jdraft = Object.assign({}, S.jobs[id]); toast("Job saved for " + fmtDate(jdraft.date)); calSel = jdraft.date; calMonth = jdraft.date.slice(0, 7); go("calendar"); },
@@ -1279,7 +1398,7 @@ const ACTIONS = {
   invoiceJob: () => { readJobForm(); const j = jdraft; const lines = j.lines && j.lines.length ? j.lines : [Object.assign(newLine(null), {name: j.title || "Clean", rate: num(j.price)})]; startInvoice({customerId: j.customerId, jobId: j.id, quoteId: j.quoteId, lines}); },
   saveBiz: async () => {
     const v = s => $(s) ? $(s).value : "";
-    await put("settings", Object.assign({}, biz(), {id: "business", name: v("#b-name").trim(), owner: v("#b-owner").trim(), phone: v("#b-phone").trim(), email: v("#b-email").trim(), website: v("#b-website").trim(), address: v("#b-address").trim(),
+    await put("settings", Object.assign({}, biz(), {id: "business", name: v("#b-name").trim(), owner: v("#b-owner").trim(), phone: v("#b-phone").trim(), email: v("#b-email").trim(), website: v("#b-website").trim(), address: v("#b-address").trim(), routeStart: v("#b-rstart").trim(),
       bankName: v("#b-bank").trim(), sortCode: v("#b-sort").trim(), accountNo: v("#b-acc").trim(), paymentDays: num(v("#b-pay")) || 7, vatOn: $("#b-vaton").checked, vatRate: num(v("#b-vatrate")) || 20, vatNo: v("#b-vatno").trim(),
       followUpDays: num(v("#b-fu")) || 3, validDays: num(v("#b-valid")) || 30, quoteNote: v("#b-qnote"), invoiceNote: v("#b-inote"), leadMsg: v("#b-lnote"), remindMsg: v("#b-rnote"), reviewLink: v("#b-revlink").trim(), reviewMsg: v("#b-revmsg")}));
     toast("Details saved");
