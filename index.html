@@ -149,7 +149,7 @@ textarea{min-height:70px;resize:vertical}
 .cal .day.sel{background:var(--accent-soft)}
 .cal .dn{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
 .cal .ev{font-size:11px;border-radius:4px;padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
-.ev.job{background:var(--accent-soft);color:var(--accent)} .ev.fu{background:var(--warn-soft);color:var(--warn)} .ev.inv{background:var(--bad-soft);color:var(--bad)}
+.ev.job{background:var(--accent-soft);color:var(--accent)} .ev.plan{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);font-weight:500} .pill.plan{background:transparent;color:var(--accent);border:1px dashed var(--accent)} .ev.fu{background:var(--warn-soft);color:var(--warn)} .ev.inv{background:var(--bad-soft);color:var(--bad)}
 @media (max-width:640px){.cal .day{min-height:54px}.cal .ev{font-size:0;height:6px;padding:0}}
 
 .banner{border-radius:var(--r);padding:10px 14px;font-size:14px;background:var(--warn-soft);color:var(--warn);border:1px solid transparent}
@@ -575,6 +575,22 @@ function newLeads(){
 function leadRow(c){
   return `<div class="item" data-open="customer" data-id="${c.id}"><div class="main"><div class="t">${esc(c.name)} <span class="pill sent">New lead</span></div><div class="d">${esc(c.service || "No service given")} · ${esc(c.postcode || c.address || "")}${c.leadDate ? " · " + fmtDate(c.leadDate) : ""}</div></div><div class="amt">${esc(c.phone || "")}</div></div>`;
 }
+/* Repeat cleans: only the next visit is a real job (marking it done books the one after),
+   so later visits are worked out from the job's date and repeat gap and shown as "planned". */
+function laterRepeat(j, d){ return Object.values(S.jobs).some(o => o.id !== j.id && o.customerId === j.customerId && num(o.repeatWeeks) && o.date > j.date && o.date <= d); }
+function plannedOn(d){
+  if (d < today()) return [];
+  return Object.values(S.jobs).filter(j => { const w = num(j.repeatWeeks) * 7; return w && !j.done && j.date && d > j.date && daysBetween(j.date, d) % w === 0 && !laterRepeat(j, d); });
+}
+function plannedDates(j, count){
+  const out = [], w = num(j.repeatWeeks) * 7; if (!w || j.done || !j.date) return out;
+  for (let d = addDays(j.date, w); out.length < count; d = addDays(d, w)) { if (laterRepeat(j, d)) break; if (d >= today()) out.push(d); }
+  return out;
+}
+function plannedRow(j, d){
+  const c = cust(j.customerId);
+  return `<div class="item" data-open="job" data-id="${j.id}"><div class="main"><div class="t">${esc(c.name)} · ${esc(j.title || "Clean")} <span class="pill plan">Planned</span></div><div class="d">${fmtDate(d)}${j.time ? " " + esc(j.time) : ""} · ${esc(c.postcode || c.address || "")} · every ${j.repeatWeeks} wks · books itself when you mark the ${fmtDate(j.date)} clean done</div></div><div class="amt">${gbp(num(j.price))}</div></div>`;
+}
 function greet(){ const h = new Date().getHours(); return h < 12 ? "Morning" : h < 18 ? "Afternoon" : "Evening"; }
 function jobRow(j){
   const c = cust(j.customerId);
@@ -785,10 +801,12 @@ VIEWS.customer = function(){
   const spent = is.filter(i => i.status === "paid").reduce((s, i) => s + totals(i).total, 0);
   const owed = is.filter(i => i.status !== "paid").reduce((s, i) => s + totals(i).total, 0);
   const next = js.filter(j => !j.done && j.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const rep = js.filter(j => !j.done && num(j.repeatWeeks)).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const then = rep && next ? plannedDates(rep, 3).filter(d => d > next.date) : [];
   const maps = [c.address, c.postcode].filter(Boolean).join(", ");
   return `<div class="head"><div><h1>${esc(c.name)}</h1><p>${c.source ? "Found you via " + esc(c.source) + " · " : ""}customer since ${fmtLong((c.createdAt || "").slice(0, 10))}</p></div>
     <div class="row"><button class="btn" data-act="editCustomer" data-id="${c.id}">Edit</button><button class="btn primary" data-act="newQuote" data-cid="${c.id}">New quote</button></div></div>
-  <div class="stats"><div class="stat"><div class="k">Total paid</div><div class="v num">${gbp(spent)}</div></div><div class="stat"><div class="k">Owing</div><div class="v num">${gbp(owed)}</div></div><div class="stat"><div class="k">Next clean</div><div class="v" style="font-size:22px">${next ? fmtDate(next.date) : "None booked"}</div></div></div>
+  <div class="stats"><div class="stat"><div class="k">Total paid</div><div class="v num">${gbp(spent)}</div></div><div class="stat"><div class="k">Owing</div><div class="v num">${gbp(owed)}</div></div><div class="stat"><div class="k">Next clean</div><div class="v" style="font-size:22px">${next ? fmtDate(next.date) : "None booked"}</div>${then.length ? `<div class="s">Then ${then.map(fmtDate).join(", ")}</div>` : ""}</div></div>
   <div class="grid2">
   <section class="panel"><h3>Details</h3><dl class="kv">
     <dt>Phone</dt><dd>${phoneLink(c.phone) || "–"}</dd><dt>Email</dt><dd>${esc(c.email) || "–"}</dd>
@@ -956,6 +974,7 @@ let calMonth = today().slice(0, 7), calSel = today();
 function eventsOn(d){
   const ev = [];
   Object.values(S.jobs).filter(j => j.date === d).sort((a, b) => (a.time || "").localeCompare(b.time || "")).forEach(j => ev.push({cls: "job", label: (j.time ? j.time + " " : "") + cust(j.customerId).name, open: "job", id: j.id, done: j.done}));
+  plannedOn(d).sort((a, b) => (a.time || "").localeCompare(b.time || "")).forEach(j => ev.push({cls: "job plan", label: (j.time ? j.time + " " : "") + cust(j.customerId).name, open: "job", id: j.id, planned: true}));
   Object.values(S.quotes).filter(q => q.status === "sent" && q.followUpOn === d).forEach(q => ev.push({cls: "fu", label: "Follow up " + cust(q.customerId).name, open: "quote", id: q.id}));
   Object.values(S.invoices).filter(i => i.status !== "paid" && i.dueDate === d).forEach(i => ev.push({cls: "inv", label: "Due " + i.number, open: "invoice", id: i.id}));
   return ev;
@@ -975,8 +994,8 @@ VIEWS.calendar = function(){
   return `<div class="head"><div><h1>${first.toLocaleDateString("en-GB", {month: "long", year: "numeric"})}</h1><p>Jobs, quote follow-ups and invoice due dates</p></div>
     <div class="row"><button class="btn" data-cal="-1" aria-label="Previous month">‹</button><button class="btn" data-cal="0">Today</button><button class="btn" data-cal="1" aria-label="Next month">›</button><button class="btn primary" data-act="newJob">Book a job</button></div></div>
   <section class="panel"><div class="cal">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => `<div class="dow">${d}</div>`).join("")}${cells.join("")}</div>
-    <div class="row hint" style="margin-top:10px"><span class="pill job">Job</span><span class="pill due">Follow-up</span><span class="pill overdue">Invoice due</span></div></section>
-  <section class="panel"><div class="row"><h3>${fmtLong(calSel)}</h3><span class="spacer"></span>${sel.some(e => e.open === "job") ? `<button class="btn sm" data-act="route" data-date="${calSel}">Plan route</button>` : ""}</div><div class="list">${sel.length ? sel.map(e => e.open === "job" ? jobRow(S.jobs[e.id]) : `<div class="item" data-open="${e.open}" data-id="${e.id}"><div class="main"><div class="t">${esc(e.label)}</div></div><span class="pill ${e.cls === "fu" ? "due" : "overdue"}">${e.cls === "fu" ? "Follow-up" : "Invoice"}</span></div>`).join("") : `<div class="empty">Nothing on this day.</div>`}</div></section>`;
+    <div class="row hint" style="margin-top:10px"><span class="pill job">Job</span><span class="pill plan">Planned repeat</span><span class="pill due">Follow-up</span><span class="pill overdue">Invoice due</span></div></section>
+  <section class="panel"><div class="row"><h3>${fmtLong(calSel)}</h3><span class="spacer"></span>${sel.some(e => e.open === "job" && !e.planned) ? `<button class="btn sm" data-act="route" data-date="${calSel}">Plan route</button>` : ""}</div><div class="list">${sel.length ? sel.map(e => e.planned ? plannedRow(S.jobs[e.id], calSel) : e.open === "job" ? jobRow(S.jobs[e.id]) : `<div class="item" data-open="${e.open}" data-id="${e.id}"><div class="main"><div class="t">${esc(e.label)}</div></div><span class="pill ${e.cls === "fu" ? "due" : "overdue"}">${e.cls === "fu" ? "Follow-up" : "Invoice"}</span></div>`).join("") : `<div class="empty">Nothing on this day.</div>`}</div></section>`;
 };
 let jdraft = null;
 VIEWS.job = function(){
