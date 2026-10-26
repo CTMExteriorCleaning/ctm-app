@@ -549,7 +549,7 @@ VIEWS.today = function(){
     <div class="stat"><div class="k">Win rate this month</div><div class="v num">${decided ? Math.round(won / decided * 100) + "%" : "–"}</div><div class="s">${won} won of ${decided} decided</div></div>
   </div>
   ${remind.length ? `<section class="panel"><div class="row"><h2>Reminders for tomorrow</h2><span class="spacer"></span><span class="hint">${remind.filter(j => j.remindedOn).length} of ${remind.length} sent</span></div>
-    <p class="hint">Tap WhatsApp or Text, press send, then come back here for the next one. Change the wording in Settings.</p><div class="list">${remind.map(reminderRow).join("")}</div></section>` : ""}
+    <p class="hint">Tap WhatsApp or Text, press send, then come back here for the next one. Change the wording in Business.</p><div class="list">${remind.map(reminderRow).join("")}</div></section>` : ""}
   ${reviews.length ? `<section class="panel"><div class="row"><h2>Ask for a Google review</h2><span class="spacer"></span><span class="hint">${reviews.length} paid recently</span></div>
     ${b.reviewLink ? `<p class="hint">These customers paid in the last 30 days. Tap WhatsApp or Text, press send, and they drop off this list. Tap Don't ask to skip someone.</p><div class="list">${reviews.map(reviewRow).join("")}</div>` : `<div class="row"><span class="hint">Add your Google review link in Business settings and these customers will get a one-tap review request.</span><span class="spacer"></span><button class="btn sm" data-tab="business">Add link</button></div>`}</section>` : ""}
   ${leads.length ? `<section class="panel"><div class="row"><h2>New leads</h2><span class="spacer"></span><button class="btn sm ghost" data-tab="importLeads">Import leads</button></div><div class="list">${leads.map(leadRow).join("")}</div></section>` : ""}
@@ -577,7 +577,8 @@ function leadRow(c){
 }
 /* Repeat cleans: only the next visit is a real job (marking it done books the one after),
    so later visits are worked out from the job's date and repeat gap and shown as "planned". */
-function laterRepeat(j, d){ return Object.values(S.jobs).some(o => o.id !== j.id && o.customerId === j.customerId && num(o.repeatWeeks) && o.date > j.date && o.date <= d); }
+const sameRound = (a, b) => a.id !== b.id && a.customerId === b.customerId && (a.title || "Clean") === (b.title || "Clean");
+function laterRepeat(j, d){ return Object.values(S.jobs).some(o => sameRound(o, j) && num(o.repeatWeeks) && o.date > j.date && o.date <= d); }
 function plannedOn(d){
   if (d < today()) return [];
   return Object.values(S.jobs).filter(j => { const w = num(j.repeatWeeks) * 7; return w && !j.done && j.date && d > j.date && daysBetween(j.date, d) % w === 0 && !laterRepeat(j, d); });
@@ -813,7 +814,7 @@ VIEWS.customer = function(){
     <dt>Address</dt><dd>${esc(maps) || "–"}${maps ? ` · <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(maps)}" target="_blank" rel="noopener">Map</a>` : ""}</dd>
     ${c.service ? `<dt>Asked for</dt><dd>${esc(c.service)}</dd>` : ""}
     <dt>Notes</dt><dd style="white-space:pre-wrap">${esc(c.notes) || "–"}</dd></dl>
-    ${c.phone ? `<div class="row" style="margin-top:12px">${msgButtons(c.phone, c.stage === "lead" && !qs.length ? fillMsg(biz().leadMsg, c) : "Hi " + fillMsg("{first}", c) + ", ")}<span class="hint">${c.stage === "lead" && !qs.length ? "Opens with your new-lead message written. Change it in Settings." : "Message from your own phone."}</span></div>` : ""}
+    ${c.phone ? `<div class="row" style="margin-top:12px">${msgButtons(c.phone, c.stage === "lead" && !qs.length ? fillMsg(biz().leadMsg, c) : "Hi " + fillMsg("{first}", c) + ", ")}<span class="hint">${c.stage === "lead" && !qs.length ? "Opens with your new-lead message written. Change it in Business." : "Message from your own phone."}</span></div>` : ""}
     ${spent || c.reviewAskedOn ? `<div class="row" style="margin-top:12px">${reviewBox(c)}</div>` : ""}
     ${c.stage === "lead" && !qs.length ? `<div class="row" style="margin-top:12px"><span class="pill sent">New lead</span><span class="hint">Stays on the Today screen until you quote it.</span><span class="spacer"></span><button class="btn sm" data-act="closeLead" data-id="${c.id}">Not interested</button></div>` : ""}
     <div class="row" style="margin-top:12px"><span class="spacer"></span><span id="delc"><button class="btn sm ghost danger" data-act="askDel" data-kind="customers" data-id="${c.id}">Delete customer</button></span></div></section>
@@ -1409,12 +1410,21 @@ const ACTIONS = {
   saveJob: async () => { readJobForm(); if (!jdraft.customerId) { toast("Choose a customer first."); return; } const id = await put("jobs", jdraft); jdraft = Object.assign({}, S.jobs[id]); toast("Job saved for " + fmtDate(jdraft.date)); calSel = jdraft.date; calMonth = jdraft.date.slice(0, 7); go("calendar"); },
   doneJob: async () => {
     readJobForm(); const j = Object.assign({}, jdraft, {done: true, doneOn: today()}); await put("jobs", j);
-    if (num(j.repeatWeeks)) { const n = Object.assign({}, j); delete n.id; delete n.invoiceId; delete n.doneOn; delete n.remindedOn; delete n.createdAt; n.done = false; n.date = addDays(j.date, num(j.repeatWeeks) * 7); await put("jobs", n); toast("Done. Next clean booked for " + fmtDate(n.date)); }
+    const booked = num(j.repeatWeeks) && Object.values(S.jobs).find(o => sameRound(o, j) && !o.done && o.date > j.date);
+    if (booked) toast("Done. Next clean was already booked for " + fmtDate(booked.date));
+    else if (num(j.repeatWeeks)) { const n = Object.assign({}, j); delete n.id; delete n.invoiceId; delete n.doneOn; delete n.remindedOn; delete n.createdAt; delete n.stop; n.done = false; n.date = addDays(j.date, num(j.repeatWeeks) * 7); await put("jobs", n); toast("Done. Next clean booked for " + fmtDate(n.date)); }
     else toast("Marked as done");
     jdraft = Object.assign({}, S.jobs[j.id]); render(true);
   },
   undoJob: async () => { readJobForm(); await put("jobs", Object.assign({}, jdraft, {done: false})); jdraft = Object.assign({}, S.jobs[jdraft.id]); render(true); },
-  invoiceJob: () => { readJobForm(); const j = jdraft; const lines = j.lines && j.lines.length ? j.lines : [Object.assign(newLine(null), {name: j.title || "Clean", rate: num(j.price)})]; startInvoice({customerId: j.customerId, jobId: j.id, quoteId: j.quoteId, lines}); },
+  invoiceJob: () => {
+    readJobForm(); const j = jdraft, q = S.quotes[j.quoteId] || {}, b = biz();
+    // Use the quote's lines (and discount) while they still add up to the job price; if the price was changed, invoice the new price.
+    const fromQuote = j.lines && j.lines.length ? {lines: j.lines, discount: num(q.discount), vatOn: q.vatOn != null ? q.vatOn : b.vatOn, vatRate: q.vatRate != null ? q.vatRate : b.vatRate} : null;
+    const vatOn = fromQuote ? fromQuote.vatOn : b.vatOn, net = vatOn ? r2(num(j.price) / (1 + num(b.vatRate) / 100)) : num(j.price);
+    const inv = fromQuote && Math.abs(totals(fromQuote).total - num(j.price)) < 0.01 ? fromQuote : {lines: [Object.assign(newLine(null), {name: j.title || "Clean", rate: net})], discount: 0};
+    startInvoice(Object.assign({customerId: j.customerId, jobId: j.id, quoteId: j.quoteId, date: j.done && j.doneOn ? j.doneOn : today()}, inv));
+  },
   saveBiz: async () => {
     const v = s => $(s) ? $(s).value : "";
     await put("settings", Object.assign({}, biz(), {id: "business", name: v("#b-name").trim(), owner: v("#b-owner").trim(), phone: v("#b-phone").trim(), email: v("#b-email").trim(), website: v("#b-website").trim(), address: v("#b-address").trim(), routeStart: v("#b-rstart").trim(),
@@ -1447,12 +1457,13 @@ const ACTIONS = {
   },
   askDel: (el, id) => {
     const kind = el.dataset.kind; pendingDel = {kind, id};
-    const what = {quotes: "this quote", invoices: "this invoice", customers: "this customer (their quotes and invoices stay)", jobs: "this job", services: "this service"}[kind];
+    const what = {quotes: "this quote", invoices: "this invoice", customers: "this customer and their booked jobs (quotes, invoices and done jobs stay)", jobs: "this job", services: "this service"}[kind];
     el.parentElement.innerHTML = `<span class="confirm">Delete ${what}? <button class="btn sm danger" data-act="doDel">Delete</button><button class="btn sm" data-act="noDel">Keep</button></span>`;
   },
   noDel: () => { pendingDel = null; render(); },
   doDel: async () => {
     if (!pendingDel) return; const {kind, id} = pendingDel; pendingDel = null;
+    if (kind === "customers") for (const j of Object.values(S.jobs).filter(j => j.customerId === id && !j.done)) await remove("jobs", j.id);
     await remove(kind, id); toast("Deleted");
     if (kind === "services") { readSvcs(); render(); } else go({quotes: "quotes", invoices: "invoices", customers: "customers", jobs: "calendar"}[kind]);
   }
