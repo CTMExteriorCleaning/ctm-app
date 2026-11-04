@@ -49,7 +49,21 @@ function toCustomer(f: Lead, leadId: string, created: string, platform: string) 
   };
 }
 
+const digits = (s: string) => (s || "").replace(/\D/g, "").replace(/^44/, "0");
+
+// Skip leads already in the app: same Meta lead ID, phone or email (covers CSV imports and hand-entered customers).
+async function exists(c: ReturnType<typeof toCustomer>) {
+  const { data, error } = await db.from("records").select("data").eq("user_id", env("OWNER_USER_ID")).eq("col", "customers");
+  if (error) throw error;
+  const phone = digits(c.phone), email = c.email.toLowerCase();
+  return (data ?? []).some(({ data: d }) =>
+    (c.leadId && d?.leadId === c.leadId) ||
+    (phone.length > 6 && digits(d?.phone) === phone) ||
+    (email && (d?.email || "").toLowerCase() === email));
+}
+
 async function save(customer: ReturnType<typeof toCustomer>) {
+  if (await exists(customer)) return;
   const id = "lead-" + (customer.leadId || crypto.randomUUID()).replace(/[^\w-]/g, "");
   const { error } = await db.from("records").upsert(
     { user_id: env("OWNER_USER_ID"), col: "customers", id, data: customer, updated_at: customer.updatedAt },
