@@ -52,3 +52,21 @@ The connection runs in a Netlify function (`netlify/functions/freeagent.mjs`), w
 3. In the app, go to **Business → FreeAgent → Connect FreeAgent** and approve access.
 
 Set `FREEAGENT_SANDBOX=true` as well to try it against a FreeAgent sandbox account first.
+
+## Lead tracker sync (optional)
+
+Fills in your Google Sheet lead tracker from the calendar. Every hour, for each booked job, it finds the matching lead
+(by phone number, then by exact name) and fills in **Booked?** = Yes, **Job value (£)** and **Job date**.
+It only writes into empty cells, and it skips any lead you've marked "No" yourself.
+It uses the first job booked on or after the date the lead enquired.
+
+1. **Make the tracker a Google Sheet.** In Google Drive, open the tracker and choose **File → Save as Google Sheets**.
+   Use the new Google Sheet from now on.
+2. **Create your key.** In Supabase, open **SQL Editor**, paste in `supabase/tracker-feed.sql` and run it.
+   Copy the long key it shows at the bottom.
+3. **Add the script.** In the Google Sheet, choose **Extensions → Apps Script**. Delete what's there, paste in
+   `tracker-sync/Code.gs`, and put your key between the quotes on the `TRACKER_KEY` line. Click **Save**.
+4. **Turn it on.** Reload the sheet. A **Lead tracker** menu appears. Choose **Turn on hourly updates** and allow access when Google asks.
+
+Use **Lead tracker → Update bookings from the app now** to update it straight away. Cells it fills in have a small note saying so.
+It fills the Gutters tab; to include another tab, add its name to `TABS` at the top of the script.
