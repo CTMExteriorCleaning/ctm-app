@@ -1034,7 +1034,7 @@ function readJobForm(){
 
 /* route planner */
 // Postcodes are turned into map points by postcodes.io (free, no key). Stops are put in
-// order nearest-first from the start point, then tidied with 2-opt so the route doesn't cross itself.
+// order nearest-first, then tidied (2-opt and or-opt) so the route doesn't cross itself or double back.
 let routeDate = today(), routeBusy = false;
 const GEO = {};
 const PC_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
@@ -1065,36 +1065,88 @@ function miles(a, b){
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
-function orderStops(stops, home, back){
-  // stops: [{g: {lat, lng}, ...}]. Nearest-neighbour from home (or the first stop), then 2-opt.
-  const left = stops.slice(), seq = [];
-  let at = home || (left.length ? left[0].g : null);
-  while (left.length){ let k = 0; left.forEach((s, i) => { if (miles(at, s.g) < miles(at, left[k].g)) k = i; }); at = left[k].g; seq.push(left.splice(k, 1)[0]); }
-  const len = r => { let t = home && r.length ? miles(home, r[0].g) : 0; for (let i = 1; i < r.length; i++) t += miles(r[i - 1].g, r[i].g); if (home && back && r.length) t += miles(r[r.length - 1].g, home); return t; };
-  let best = seq, bestLen = len(seq), better = true;
-  while (better){
-    better = false;
-    for (let i = 0; i < best.length - 1; i++) for (let k = i + 1; k < best.length; k++){
-      const c = best.slice(0, i).concat(best.slice(i, k + 1).reverse(), best.slice(k + 1)); const l = len(c);
-      if (l < bestLen - 1e-9) { best = c; bestLen = l; better = true; }
+function orderStops(stops, from, to){
+  // stops: [{g: {lat, lng}, ...}]; from/to: where the day starts and ends ({lat, lng}, or null for
+  // "anywhere"). Builds the route several ways (nearest-first from the start,
+  // and starting from each stop in turn), tidies each one, then keeps the shortest. Tidying repeats
+  // until nothing helps: 2-opt flips a run of stops so the route doesn't cross itself, and or-opt
+  // lifts 1 to 3 stops in a row and drops them where they fit better, so nothing is left behind
+  // to double back for.
+  const n = stops.length;
+  if (!n) return {seq: [], miles: 0};
+  // Points 0..n-1 are the stops; n is the start; n+1 is the finish. An end that is "anywhere"
+  // counts as 0 miles from every stop.
+  const S = n, T = n + 1, pt = i => i < n ? stops[i].g : i === S ? from : to;
+  const D = [];
+  for (let a = 0; a < n + 2; a++){
+    D.push([]);
+    for (let b = 0; b < n + 2; b++){
+      const ga = pt(a), gb = pt(b);
+      D[a].push(ga && gb ? miles(ga, gb) : 0);
     }
   }
-  return {seq: best, miles: bestLen};
+  const len = r => { let t = 0; for (let i = 1; i < r.length; i++) t += D[r[i - 1]][r[i]]; return t; };
+  function nn(first){
+    const left = new Set(stops.map((_, i) => i)), r = [S];
+    let at = first == null ? S : first;
+    if (first != null){ left.delete(first); r.push(first); }
+    while (left.size){ let k = -1; left.forEach(i => { if (k < 0 || D[at][i] < D[at][k]) k = i; }); left.delete(k); r.push(k); at = k; }
+    r.push(T);
+    return r;
+  }
+  function tidy(r){
+    // r = [S, stops..., T]; the ends never move.
+    const E = 1e-9, m = r.length;
+    for (let better = true, guard = 0; better && guard < 500; guard++){
+      better = false;
+      // 2-opt: reverse r[i..k]
+      for (let i = 1; i < m - 2; i++) for (let k = i + 1; k < m - 1; k++){
+        const gain = D[r[i - 1]][r[i]] + D[r[k]][r[k + 1]] - D[r[i - 1]][r[k]] - D[r[i]][r[k + 1]];
+        if (gain > E){ for (let a = i, b = k; a < b; a++, b--) [r[a], r[b]] = [r[b], r[a]]; better = true; }
+      }
+      // or-opt: move r[i..i+s-1] (either way round) into the gap between r[j] and r[j+1]
+      for (let s = 1; s <= 3; s++) for (let i = 1; i + s < m; i++){
+        const e = i + s - 1, p = r[i - 1], q = r[e + 1], x = r[i], y = r[e];
+        const cut = D[p][x] + D[y][q] - D[p][q];
+        let bestGain = E, bestJ = -1, flip = false;
+        for (let j = 0; j < m - 1; j++){
+          if (j >= i - 1 && j <= e) continue;
+          const u = r[j], v = r[j + 1], base = D[u][v];
+          const g1 = cut - (D[u][x] + D[y][v] - base), g2 = cut - (D[u][y] + D[x][v] - base);
+          if (g1 > bestGain){ bestGain = g1; bestJ = j; flip = false; }
+          if (s > 1 && g2 > bestGain){ bestGain = g2; bestJ = j; flip = true; }
+        }
+        if (bestJ >= 0){
+          const seg = r.splice(i, s); if (flip) seg.reverse();
+          const at = bestJ < i ? bestJ + 1 : bestJ + 1 - s;
+          r.splice(at, 0, ...seg); better = true;
+        }
+      }
+    }
+    return r;
+  }
+  const starts = [null].concat(n <= 60 ? stops.map((_, i) => i) : []);
+  let best = null, bestLen = Infinity;
+  for (const f of starts){ const r = tidy(nn(f)), l = len(r); if (l < bestLen - 1e-9){ best = r; bestLen = l; } }
+  return {seq: best.slice(1, -1).map(i => stops[i]), miles: bestLen};
 }
 async function saveStops(list){ for (let i = 0; i < list.length; i++) if (num(list[i].stop) !== i + 1) await put("jobs", Object.assign({}, list[i], {stop: i + 1})); }
 async function autoRoute(){
   const all = routeJobs(routeDate), done = all.filter(j => j.done), todo = all.filter(j => !j.done);
   const basePc = pcOf(routeStart());
   routeBusy = true; render();
-  try { await geocode([basePc].concat(todo.map(j => custPc(cust(j.customerId))))); }
+  // Re-sorting part way through the day starts from the last job ticked off, not from home.
+  const lastDone = done.slice().reverse().map(j => custPc(cust(j.customerId))).find(Boolean) || "";
+  try { await geocode([basePc, lastDone].concat(todo.map(j => custPc(cust(j.customerId))))); }
   catch (e) { routeBusy = false; render(); toast("Couldn't look up postcodes. Check your signal and try again."); return; }
   const home = basePc ? GEO[basePc] : null;
   const pts = todo.map(j => ({j, g: GEO[custPc(cust(j.customerId))]}));
   const missing = pts.filter(p => !p.g);
-  const {seq, miles: m} = orderStops(pts.filter(p => p.g), home, biz().routeReturn !== false);
+  const from = (lastDone && GEO[lastDone]) || home;
+  const {seq, miles: m} = orderStops(pts.filter(p => p.g), from, biz().routeReturn !== false ? home : null);
   await saveStops(done.concat(seq.map(p => p.j), missing.map(p => p.j)));
   routeBusy = false; render();
-  toast(missing.length ? missing.length + " stop" + (missing.length > 1 ? "s" : "") + " couldn't be found from the postcode, so went to the end. Move them with ↑ ↓" : "Sorted. About " + Math.round(m * 1.3) + " miles of driving");
+  toast(missing.length ? missing.length + " stop" + (missing.length > 1 ? "s" : "") + " couldn't be found from the postcode, so went to the end. Move them with ↑ ↓" : "Sorted. About " + Math.round(m * 1.3) + " miles of driving" + (done.length ? " left" : ""));
 }
 function mapsUrl(origin, places){
   const e = encodeURIComponent;
