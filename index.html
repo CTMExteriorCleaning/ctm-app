@@ -162,7 +162,7 @@ textarea{min-height:70px;resize:vertical}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .seg button{border:0;background:var(--surface);padding:6px 12px;cursor:pointer;font-weight:600;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
-.svc{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr auto;gap:8px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+.svc{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr 1fr auto;gap:8px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
 .svc:first-child{border-top:0}
 .svc .prop{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
 @media (max-width:640px){.svc{grid-template-columns:1fr 1fr}.svc .nm{grid-column:1/-1}}
@@ -1148,9 +1148,32 @@ async function autoRoute(){
   routeBusy = false; render();
   toast(missing.length ? missing.length + " stop" + (missing.length > 1 ? "s" : "") + " couldn't be found from the postcode, so went to the end. Move them with ↑ ↓" : "Sorted. About " + Math.round(m * 1.3) + " miles of driving" + (done.length ? " left" : ""));
 }
-// Rough miles for the stops still to do, in the order shown. Straight-line distance x 1.3 for roads.
-// Looks the postcodes up in the background the first time the day is opened.
+// Rough miles and arrival times for the stops still to do, in the order shown. Driving is
+// straight-line distance x 1.3 for roads, at an average of 25 mph. Time on site comes from
+// "Mins on site" for the job's services (Business > Services and prices), or the job's own
+// "Hours on site" if no service matches. Postcodes are looked up in the background the first time.
+const ROAD = 1.3, MPH = 25;
 let milesLookup = "";
+const svcWords = name => String(name || "").toLowerCase().replace(/\(.*?\)/g, " ").split(/[^a-z]+/)
+  .filter(w => w.length > 2 && !["and","the","clean","cleaning","clear","clearing","wash","washing","service","removal","with"].includes(w));
+function jobMins(j){
+  const timed = Object.values(S.services).filter(v => num(v.mins) > 0);
+  // From the quote the job came from, when its lines name services.
+  const q = j.quoteId && S.quotes[j.quoteId];
+  if (q && Array.isArray(q.lines)){
+    const ids = [...new Set(q.lines.map(l => l.serviceId).filter(id => S.services[id] && num(S.services[id].mins) > 0))];
+    if (ids.length) return {mins: ids.reduce((t, id) => t + num(S.services[id].mins), 0), from: "service"};
+  }
+  // Otherwise from the job's title, e.g. "Window clean, gutters" matches both services.
+  const tw = svcWords(j.title), has = w => tw.some(t => t.startsWith(w) || w.startsWith(t));
+  let hits = timed.map(v => ({v, w: svcWords(v.name)})).filter(x => x.w.length && x.w.every(has));
+  hits = hits.filter(x => !hits.some(y => y !== x && y.w.length > x.w.length && x.w.every(w => y.w.includes(w))));
+  if (hits.length) return {mins: hits.reduce((t, x) => t + num(x.v.mins), 0), from: "service"};
+  return {mins: Math.round(num(j.hours || 2) * 60), from: "job"};
+}
+const durTxt = m => m < 60 ? m + " min" : Math.floor(m / 60) + " hr" + (m % 60 ? " " + m % 60 + " min" : "");
+const hm = m => { m = ((Math.round(m / 5) * 5) % 1440 + 1440) % 1440; return pad(Math.floor(m / 60)) + ":" + pad(m % 60); };
+const toMins = t => { const [h, m] = String(t || "").split(":").map(Number); return isFinite(h) ? h * 60 + (m || 0) : NaN; };
 function routeMiles(list){
   const done = list.filter(j => j.done), todo = list.filter(j => !j.done), basePc = pcOf(routeStart());
   const lastDone = done.slice().reverse().map(j => custPc(cust(j.customerId))).find(Boolean) || "";
@@ -1163,10 +1186,23 @@ function routeMiles(list){
   const home = basePc ? GEO[basePc] : null, back = biz().routeReturn !== false;
   const pts = todo.map(j => GEO[custPc(cust(j.customerId))]).filter(Boolean);
   if (!pts.length) return null;
+  // Clock: the day's start time, or now if you've already ticked jobs off today.
+  const nowM = new Date().getHours() * 60 + new Date().getMinutes();
+  let clock = toMins(biz().routeTime || "09:00"); if (!isFinite(clock)) clock = 540;
+  if (done.length && routeDate === today()) clock = nowM;
   let at = (lastDone && GEO[lastDone]) || home, t = 0;
-  for (const g of pts){ if (at) t += miles(at, g); at = g; }
-  if (back && home) t += miles(at, home);
-  return {miles: Math.round(t * 1.3), missing: todo.length - pts.length, left: done.length > 0};
+  const eta = {};
+  for (const j of todo){
+    const g = GEO[custPc(cust(j.customerId))];
+    if (g && at){ const d = miles(at, g) * ROAD; t += d; clock += d / MPH * 60; }
+    if (g) at = g;
+    const m = jobMins(j);
+    eta[j.id] = {arrive: hm(clock), mins: m.mins, from: m.from, noPlace: !g};
+    clock += m.mins;
+  }
+  let homeAt = null;
+  if (back && home){ const d = miles(at, home) * ROAD; t += d; clock += d / MPH * 60; homeAt = hm(clock); }
+  return {miles: Math.round(t), missing: todo.length - pts.length, left: done.length > 0, eta, finish: hm(clock), homeAt};
 }
 function mapsUrl(origin, places){
   const e = encodeURIComponent;
@@ -1188,11 +1224,11 @@ function routeLegs(list){
   }
   return legs;
 }
-function stopRow(j, i, n){
+function stopRow(j, i, n, e){
   const c = cust(j.customerId), place = custPlace(c);
   return `<div class="item stop" style="cursor:default${j.done ? ";opacity:.6" : ""}"><span class="stopn">${i + 1}</span>
     <div class="main"><a href="#" class="t" data-open="job" data-id="${j.id}" style="display:block;color:inherit;text-decoration:none">${esc(c.name)} · ${esc(j.title || "Clean")}</a>
-    <div class="d">${j.time ? esc(j.time) + " · " : ""}${place ? esc(place) : '<span style="color:var(--warn)">No address or postcode</span>'}</div></div>
+    <div class="d">${e ? `<b>ETA ${e.arrive}</b> · ${durTxt(e.mins)}${e.noPlace ? " (no postcode, so no driving counted)" : ""} · ` : j.time ? esc(j.time) + " · " : ""}${place ? esc(place) : '<span style="color:var(--warn)">No address or postcode</span>'}</div></div>
     ${j.done ? '<span class="pill done">Done</span>' : place ? `<a class="btn sm" href="${esc(mapsUrl("", [place]))}" target="_blank" rel="noopener">Go</a>` : ""}
     <button class="btn sm" data-act="routeMove" data-id="${j.id}" data-dir="-1" aria-label="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
     <button class="btn sm" data-act="routeMove" data-id="${j.id}" data-dir="1" aria-label="Move down" ${i === n - 1 ? "disabled" : ""}>↓</button></div>`;
@@ -1204,15 +1240,16 @@ VIEWS.route = function(){
     <div class="row"><button class="btn" data-act="routeDay" data-dir="-1" aria-label="Previous day">‹</button><input type="date" id="r-date" value="${esc(routeDate)}" style="width:auto"><button class="btn" data-act="routeDay" data-dir="1" aria-label="Next day">›</button></div></div>
   <section class="panel">
     <div class="row"><span class="hint">Start${biz().routeReturn !== false ? " and finish" : ""}: ${base ? `<b>${esc(base)}</b>` : "your current location"}</span>${base && !pcOf(base) ? `<span class="hint" style="color:var(--warn)">(no postcode, so it can't be used for sorting)</span>` : ""}<span class="spacer"></span><button class="btn sm ghost" data-tab="business">Change</button></div>
-    <label class="f check" style="flex-direction:row;margin-top:8px"><input type="checkbox" id="r-home" ${biz().routeReturn !== false ? "checked" : ""}> Finish back at the start</label>
+    <div class="row" style="margin-top:8px;gap:16px"><label class="f" style="flex-direction:row;align-items:center;gap:8px">Day starts at<input type="time" id="r-time" value="${esc(biz().routeTime || "09:00")}" style="width:auto"></label>
+    <label class="f check" style="flex-direction:row"><input type="checkbox" id="r-home" ${biz().routeReturn !== false ? "checked" : ""}> Finish back at the start</label></div>
     <div class="row" style="margin-top:12px"><button class="btn" data-act="autoRoute" ${list.filter(j => !j.done).length < 2 || routeBusy ? "disabled" : ""}>${routeBusy ? "Sorting…" : "Sort into best order"}</button>
       ${legs.length === 1 ? `<a class="btn primary" href="${esc(legs[0].url)}" target="_blank" rel="noopener">Open in Google Maps</a>` : legs.map((l, i) => `<a class="btn primary" href="${esc(l.url)}" target="_blank" rel="noopener">Part ${i + 1}: ${esc(l.label)}</a>`).join("")}</div>
-    ${rm ? `<p style="margin:12px 0 0;font-weight:600">About ${rm.miles} mile${rm.miles === 1 ? "" : "s"} of driving${rm.left ? " left" : ""} in this order${rm.missing ? `<span class="hint" style="font-weight:400"> (not counting ${rm.missing} stop${rm.missing > 1 ? "s" : ""} with no postcode)</span>` : ""}</p>` : ""}
+    ${rm ? `<p style="margin:12px 0 0;font-weight:600">About ${rm.miles} mile${rm.miles === 1 ? "" : "s"} of driving${rm.left ? " left" : ""} in this order, ${rm.homeAt ? "back at the start about " + rm.homeAt : "last job finished about " + rm.finish}${rm.missing ? `<span class="hint" style="font-weight:400"> (not counting ${rm.missing} stop${rm.missing > 1 ? "s" : ""} with no postcode)</span>` : ""}</p>` : ""}
     ${legs.length > 1 ? `<p class="hint" style="margin-top:8px">Google Maps only takes 10 stops at a time, so drive Part 1 first, then come back here and tap Part 2.</p>` : ""}
   </section>
   <section class="panel"><h2>Stops in order</h2>
-    <p class="hint">Use ↑ and ↓ to move a stop. Tap Go to get directions to just that one.</p>
-    <div class="list">${list.length ? list.map((j, i) => stopRow(j, i, list.length)).join("") : `<div class="empty">No jobs booked on this day. Pick another day above, or book a job from the Calendar.</div>`}</div></section>`;
+    <p class="hint">Use ↑ and ↓ to move a stop. Tap Go to get directions to just that one.${rm ? " Arrival times are rough: driving at about " + MPH + " mph, plus time on site." : ""}</p>
+    <div class="list">${list.length ? list.map((j, i) => stopRow(j, i, list.length, rm && rm.eta[j.id])).join("") : `<div class="empty">No jobs booked on this day. Pick another day above, or book a job from the Calendar.</div>`}</div></section>`;
 };
 
 /* business */
@@ -1260,7 +1297,7 @@ VIEWS.business = function(){
     <label class="f wide">Review request message. You can use {first}, {link}, {business} and {owner}<textarea id="b-revmsg">${esc(b.reviewMsg)}</textarea></label>
   </div><div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn primary" data-act="saveBiz">Save details</button></div></section>
   <section class="panel"><div class="row"><h2>Services and prices</h2><span class="spacer"></span><button class="btn sm" data-act="addSvc">+ Add service</button></div>
-    <p class="hint">Price by m², by metre, per item, as a fixed price, or by property type. A minimum charge kicks in when a small job would come in under it.</p>
+    <p class="hint">Price by m², by metre, per item, as a fixed price, or by property type. A minimum charge kicks in when a small job would come in under it. "Mins on site" is roughly how long the job takes, which the route planner uses to give each stop an arrival time.</p>
     <div id="svcs">${svcs.length ? svcs.map(svcHTML).join("") : `<div class="empty">No services yet. <button class="btn sm" data-act="starter">Load starter prices</button> and adjust them to yours.</div>`}</div>
     ${svcs.length ? `<div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn primary" data-act="saveSvcs">Save prices</button></div>` : ""}</section>
   <section class="panel"><h2>Backup</h2><p class="hint">Download everything (customers, quotes, invoices, jobs and prices) as a file you can keep, or your customer list as a spreadsheet.</p>
@@ -1276,6 +1313,7 @@ function svcHTML(s){
     <label class="f">Priced<select data-s="unit">${Object.entries(UNITS).map(([k, v]) => `<option value="${k}" ${s.unit === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
     ${s.unit === "property" ? `<span></span>` : `<label class="f">${s.unit === "fixed" ? "Price" : "Rate"} (£)<input type="number" step="0.01" data-s="rate" value="${esc(s.rate)}"></label>`}
     <label class="f">Minimum (£)<input type="number" step="0.01" data-s="min" value="${esc(s.min || "")}" placeholder="none"></label>
+    <label class="f">Mins on site<input type="number" step="5" inputmode="numeric" data-s="mins" value="${esc(s.mins || "")}" placeholder="e.g. 30"></label>
     <span id="dels-${s.id}"><button class="btn sm ghost danger" data-act="askDel" data-kind="services" data-id="${s.id}">Remove</button></span>
     ${s.unit === "property" ? `<div class="prop">${PROPS.map(([k, v]) => `<label class="f">${v} (£)<input type="number" step="0.01" data-p="${k}" value="${esc(p[k] ?? "")}"></label>`).join("")}</div>` : ""}
   </div>`;
@@ -1390,6 +1428,7 @@ document.addEventListener("input", ev => {
 document.addEventListener("change", ev => {
   const t = ev.target;
   if (t.id === "r-date" && t.value) { routeDate = t.value; render(); return; }
+  if (t.id === "r-time" && t.value) { put("settings", Object.assign({}, biz(), {id: "business", routeTime: t.value})).then(() => render()); return; }
   if (t.id === "r-home") { put("settings", Object.assign({}, biz(), {id: "business", routeReturn: t.checked})).then(() => render()); return; }
   if (t.id === "fa-auto") { put("settings", Object.assign({}, fa(), {id: "freeagent", autoSend: t.checked})).then(() => toast(t.checked ? "New invoices will go to FreeAgent" : "Send invoices to FreeAgent yourself from each invoice")); return; }
   if (t.dataset.l != null && draft) {
