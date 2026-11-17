@@ -1148,6 +1148,26 @@ async function autoRoute(){
   routeBusy = false; render();
   toast(missing.length ? missing.length + " stop" + (missing.length > 1 ? "s" : "") + " couldn't be found from the postcode, so went to the end. Move them with ↑ ↓" : "Sorted. About " + Math.round(m * 1.3) + " miles of driving" + (done.length ? " left" : ""));
 }
+// Rough miles for the stops still to do, in the order shown. Straight-line distance x 1.3 for roads.
+// Looks the postcodes up in the background the first time the day is opened.
+let milesLookup = "";
+function routeMiles(list){
+  const done = list.filter(j => j.done), todo = list.filter(j => !j.done), basePc = pcOf(routeStart());
+  const lastDone = done.slice().reverse().map(j => custPc(cust(j.customerId))).find(Boolean) || "";
+  const pcs = [basePc, lastDone].concat(todo.map(j => custPc(cust(j.customerId)))).filter(Boolean);
+  if (pcs.some(p => !(p in GEO))){
+    const key = pcs.join("|");
+    if (milesLookup !== key){ milesLookup = key; geocode(pcs).then(() => { if (view.name === "route") render(); }).catch(() => {}); }
+    return null;
+  }
+  const home = basePc ? GEO[basePc] : null, back = biz().routeReturn !== false;
+  const pts = todo.map(j => GEO[custPc(cust(j.customerId))]).filter(Boolean);
+  if (!pts.length) return null;
+  let at = (lastDone && GEO[lastDone]) || home, t = 0;
+  for (const g of pts){ if (at) t += miles(at, g); at = g; }
+  if (back && home) t += miles(at, home);
+  return {miles: Math.round(t * 1.3), missing: todo.length - pts.length, left: done.length > 0};
+}
 function mapsUrl(origin, places){
   const e = encodeURIComponent;
   let u = "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" + e(places[places.length - 1]);
@@ -1179,7 +1199,7 @@ function stopRow(j, i, n){
 }
 VIEWS.route = function(){
   const list = routeJobs(routeDate), base = routeStart(), legs = routeLegs(list);
-  const left = list.filter(j => !j.done).length;
+  const left = list.filter(j => !j.done).length, rm = left ? routeMiles(list) : null;
   return `<div class="head"><div><h1>Route</h1><p>${fmtLong(routeDate)} · ${list.length} job${list.length === 1 ? "" : "s"}${list.length && left < list.length ? ", " + left + " left" : ""}</p></div>
     <div class="row"><button class="btn" data-act="routeDay" data-dir="-1" aria-label="Previous day">‹</button><input type="date" id="r-date" value="${esc(routeDate)}" style="width:auto"><button class="btn" data-act="routeDay" data-dir="1" aria-label="Next day">›</button></div></div>
   <section class="panel">
@@ -1187,6 +1207,7 @@ VIEWS.route = function(){
     <label class="f check" style="flex-direction:row;margin-top:8px"><input type="checkbox" id="r-home" ${biz().routeReturn !== false ? "checked" : ""}> Finish back at the start</label>
     <div class="row" style="margin-top:12px"><button class="btn" data-act="autoRoute" ${list.filter(j => !j.done).length < 2 || routeBusy ? "disabled" : ""}>${routeBusy ? "Sorting…" : "Sort into best order"}</button>
       ${legs.length === 1 ? `<a class="btn primary" href="${esc(legs[0].url)}" target="_blank" rel="noopener">Open in Google Maps</a>` : legs.map((l, i) => `<a class="btn primary" href="${esc(l.url)}" target="_blank" rel="noopener">Part ${i + 1}: ${esc(l.label)}</a>`).join("")}</div>
+    ${rm ? `<p style="margin:12px 0 0;font-weight:600">About ${rm.miles} mile${rm.miles === 1 ? "" : "s"} of driving${rm.left ? " left" : ""} in this order${rm.missing ? `<span class="hint" style="font-weight:400"> (not counting ${rm.missing} stop${rm.missing > 1 ? "s" : ""} with no postcode)</span>` : ""}</p>` : ""}
     ${legs.length > 1 ? `<p class="hint" style="margin-top:8px">Google Maps only takes 10 stops at a time, so drive Part 1 first, then come back here and tap Part 2.</p>` : ""}
   </section>
   <section class="panel"><h2>Stops in order</h2>
