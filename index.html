@@ -343,6 +343,12 @@ function totals(doc){
   const vat = vatOn ? r2(net * vatRate / 100) : 0;
   return {sub, disc, net, vat, vatOn, vatRate, total: r2(net + vat)};
 }
+// What the customer sees under each line. Quotes show just the service and price
+// (plus the property type), not the rate, size or minimum-charge workings.
+function docLineText(kind, l){
+  if (kind === "quote") return l.unit === "property" ? (PROP_LABEL[l.propType] || "") : "";
+  return lineText(l);
+}
 function lineText(l){
   const a = lineAmount(l);
   if (l.unit === "property") return PROP_LABEL[l.propType] || "";
@@ -797,7 +803,7 @@ async function saveQuote(){
 function docHTML(kind, rec){
   const b = biz(), c = cust(rec.customerId), t = totals(rec);
   const title = kind === "quote" ? "Quote" : "Invoice";
-  const rows = (rec.lines || []).map(l => { const a = lineAmount(l); const desc = lineText(l); return `<tr><td><b>${esc(l.name)}</b>${desc ? `<br><span style="color:#556;font-size:12.5px">${esc(desc)}</span>` : ""}${l.note ? `<br><span style="color:#556;font-size:12.5px">${esc(l.note)}</span>` : ""}</td><td class="r">${gbp(a.amount)}</td></tr>`; }).join("");
+  const rows = (rec.lines || []).map(l => { const a = lineAmount(l); const desc = docLineText(kind, l); return `<tr><td><b>${esc(l.name)}</b>${desc ? `<br><span style="color:#556;font-size:12.5px">${esc(desc)}</span>` : ""}${l.note ? `<br><span style="color:#556;font-size:12.5px">${esc(l.note)}</span>` : ""}</td><td class="r">${gbp(a.amount)}</td></tr>`; }).join("");
   const bank = kind === "invoice" && (b.bankName || b.accountNo) ? `<div class="foot"><b>Pay by bank transfer</b>\n${esc(b.bankName)}${b.sortCode ? "\nSort code: " + esc(b.sortCode) : ""}${b.accountNo ? "\nAccount: " + esc(b.accountNo) : ""}\nReference: ${esc(rec.number)}</div>` : "";
   return `<div class="paper">
     <div class="ph"><div>${b.logo ? `<img src="${esc(b.logo)}" alt="${esc(b.name)} logo">` : `<h2 style="color:#14222b">${esc(b.name)}</h2>`}
@@ -1441,7 +1447,7 @@ async function makePDF(kind, rec){
   doc.setDrawColor(20, 34, 43); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 8;
   doc.setFont("helvetica", "bold"); doc.text(kind === "quote" ? "Prepared for" : "Bill to", M, y); doc.setFont("helvetica", "normal");
   const to = [c.name, c.address, c.postcode].filter(Boolean); doc.text(to, M, y + 5); y += 5 + to.length * 4.5 + 4;
-  const body = (rec.lines || []).map(l => { const d = [lineText(l), l.note].filter(Boolean).join("\n"); return [l.name + (d ? "\n" + d : ""), gbp(lineAmount(l).amount)]; });
+  const body = (rec.lines || []).map(l => { const d = [docLineText(kind, l), l.note].filter(Boolean).join("\n"); return [l.name + (d ? "\n" + d : ""), gbp(lineAmount(l).amount)]; });
   doc.autoTable({startY: y, head: [["Description", "Amount"]], body, margin: {left: M, right: M}, theme: "plain",
     headStyles: {fontStyle: "bold", textColor: [80, 90, 100], fontSize: 9, lineWidth: {bottom: 0.3}, lineColor: [200, 205, 210]},
     bodyStyles: {fontSize: 10, cellPadding: 2.5, lineWidth: {bottom: 0.2}, lineColor: [225, 230, 233]}, columnStyles: {1: {halign: "right", cellWidth: 35}}});
