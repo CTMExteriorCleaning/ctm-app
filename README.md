@@ -55,7 +55,8 @@ Set `FREEAGENT_SANDBOX=true` as well to try it against a FreeAgent sandbox accou
 
 ## Lead tracker sync (optional)
 
-Fills in your Google Sheet lead tracker from the calendar. Every hour, for each booked job, it finds the matching lead
+Keeps your Google Sheet lead tracker up to date from the app. Every hour it adds new Facebook/Instagram ad leads
+(from 17 Nov 2026 on, skipping window cleaning ones) to the Gutters tab. Then, for each booked job, it finds the matching lead
 (by phone number, then by exact name) and fills in **Booked?** = Yes, **Job value (£)** and **Job date**.
 It only writes into empty cells, and it skips any lead you've marked "No" yourself.
 It uses the first job booked on or after the date the lead enquired.
@@ -68,5 +69,6 @@ It uses the first job booked on or after the date the lead enquired.
    `tracker-sync/Code.gs`, and put your key between the quotes on the `TRACKER_KEY` line. Click **Save**.
 4. **Turn it on.** Reload the sheet. A **Lead tracker** menu appears. Choose **Turn on hourly updates** and allow access when Google asks.
 
-Use **Lead tracker → Update bookings from the app now** to update it straight away. Cells it fills in have a small note saying so.
+Use **Lead tracker → Update from the app now** to update it straight away. Cells it fills in have a small note saying so,
+and cell A5 on the Gutters tab shows when it last checked.
 It fills the Gutters tab; to include another tab, add its name to `TABS` at the top of the script.
