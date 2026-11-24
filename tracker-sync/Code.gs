@@ -191,10 +191,10 @@ function syncBookings() {
     const summary = (added || updated)
       ? `Added ${added} new lead${added === 1 ? '' : 's'} and filled in ${updated} booking${updated === 1 ? '' : 's'}.` + leadsNote
       : 'Up to date. Nothing new in the app.' + leadsNote;
-    if (status) status.setValue('Last checked with the app: ' + Utilities.formatDate(new Date(), tz, 'd MMM yyyy, HH:mm') + '. ' + summary);
+    if (status) status.setValue('Last checked with the app: ' + Utilities.formatDate(new Date(), 'Europe/London', 'd MMM yyyy, HH:mm') + '. ' + summary);
     return { added, updated, summary };
   } catch (e) {
-    if (status) status.setValue('Lead tracker could NOT reach the app at ' + Utilities.formatDate(new Date(), tz, 'd MMM yyyy, HH:mm') + ': ' + e.message);
+    if (status) status.setValue('Lead tracker could NOT reach the app at ' + Utilities.formatDate(new Date(), 'Europe/London', 'd MMM yyyy, HH:mm') + ': ' + e.message);
     throw e;
   }
 }
