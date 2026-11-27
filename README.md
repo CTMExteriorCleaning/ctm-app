@@ -76,6 +76,6 @@ It fills the Gutters tab; to include another tab, add its name to `TABS` at the 
 ### Ad spend from Meta (optional)
 
 The same script can also fill in **Total ad spend** (J9) and each month's **Ad spend** in the month-by-month table, straight from Meta, every hour.
-It counts spend in the "CTM Exterior Cleaning" ad account from 1 Oct 2026 (when PS Results took over). To count only some campaigns,
-set `CAMPAIGN_NAME_CONTAINS` (for example `'Gutter'`). It needs a Meta access token with `ads_read` from a system user in your
+It counts spend on gutter campaigns (names containing "Gutter") in the "CTM Exterior Cleaning" ad account from 1 Oct 2026, when PS Results took over. Window cleaning ads are left out. To change which campaigns count,
+set `CAMPAIGN_NAME_CONTAINS` ('' counts all). It needs a Meta access token with `ads_read` from a system user in your
 Business portfolio, pasted into `META_TOKEN`. If Meta can't be reached, leads and bookings still update and A5 says why.

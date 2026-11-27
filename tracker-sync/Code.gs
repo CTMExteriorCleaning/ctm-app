@@ -34,7 +34,7 @@ const NOTE_PREFIX = 'Filled in from the CTM app';
 const META_TOKEN = 'PASTE_YOUR_META_TOKEN_HERE';
 const META_AD_ACCOUNT = '832391962829528';   // "CTM Exterior Cleaning" ad account
 const SPEND_FROM = '2026-10-01';             // PS Results took over the ads on 1 Oct 2026
-const CAMPAIGN_NAME_CONTAINS = '';           // '' counts every campaign; e.g. 'Gutter' for gutters only
+const CAMPAIGN_NAME_CONTAINS = 'Gutter';     // gutter campaigns only (no window cleaning); '' would count every campaign
 const SPEND_TOTAL_CELL = 'J9';               // "Total ad spend"
 const MONTH_COL = 16, SPEND_COL = 17;        // P (Month) and Q (Ad spend) in the month-by-month table
 
