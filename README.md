@@ -72,3 +72,10 @@ It uses the first job booked on or after the date the lead enquired.
 Use **Lead tracker → Update from the app now** to update it straight away. Cells it fills in have a small note saying so,
 and cell A5 on the Gutters tab shows when it last checked.
 It fills the Gutters tab; to include another tab, add its name to `TABS` at the top of the script.
+
+### Ad spend from Meta (optional)
+
+The same script can also fill in **Total ad spend** (J9) and each month's **Ad spend** in the month-by-month table, straight from Meta, every hour.
+It counts spend in the "CTM Exterior Cleaning" ad account from 1 Oct 2026 (when PS Results took over). To count only some campaigns,
+set `CAMPAIGN_NAME_CONTAINS` (for example `'Gutter'`). It needs a Meta access token with `ads_read` from a system user in your
+Business portfolio, pasted into `META_TOKEN`. If Meta can't be reached, leads and bookings still update and A5 says why.

@@ -30,6 +30,14 @@ const ADD_LEADS_FROM = '2026-11-17';
 const COL = { date: 1, name: 2, phone: 3, postcode: 4, source: 5, booked: 9, value: 10, jobDate: 11, notes: 13 };
 const NOTE_PREFIX = 'Filled in from the CTM app';
 
+// Meta ad spend (optional). Paste the Meta access token between the quotes to switch it on.
+const META_TOKEN = 'PASTE_YOUR_META_TOKEN_HERE';
+const META_AD_ACCOUNT = '832391962829528';   // "CTM Exterior Cleaning" ad account
+const SPEND_FROM = '2026-10-01';             // PS Results took over the ads on 1 Oct 2026
+const CAMPAIGN_NAME_CONTAINS = '';           // '' counts every campaign; e.g. 'Gutter' for gutters only
+const SPEND_TOTAL_CELL = 'J9';               // "Total ad spend"
+const MONTH_COL = 16, SPEND_COL = 17;        // P (Month) and Q (Ad spend) in the month-by-month table
+
 /** Adds a "Lead tracker" menu so you can run it by hand. */
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Lead tracker')
@@ -172,6 +180,50 @@ function fillBookings(sh, tz, jobs) {
   return updated;
 }
 
+/**
+ * Reads the ad spend from Meta since SPEND_FROM, month by month, and writes it into the
+ * month-by-month table (column Q) and the "Total ad spend" box (J9).
+ * Returns a short summary, or '' when no Meta token has been pasted in.
+ */
+function updateAdSpend(sh, tz) {
+  if (!META_TOKEN || META_TOKEN.indexOf('PASTE') === 0) return '';
+  const today = Utilities.formatDate(new Date(), 'Europe/London', 'yyyy-MM-dd');
+  const params = {
+    level: CAMPAIGN_NAME_CONTAINS ? 'campaign' : 'account',
+    fields: 'spend,campaign_name',
+    time_range: JSON.stringify({ since: SPEND_FROM, until: today }),
+    time_increment: 'monthly',
+    limit: '500',
+    access_token: META_TOKEN,
+  };
+  if (CAMPAIGN_NAME_CONTAINS) params.filtering = JSON.stringify([{ field: 'campaign.name', operator: 'CONTAIN', value: CAMPAIGN_NAME_CONTAINS }]);
+  let url = 'https://graph.facebook.com/v24.0/act_' + META_AD_ACCOUNT + '/insights?' +
+    Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+
+  const byMonth = {};
+  while (url) {
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const body = JSON.parse(res.getContentText() || '{}');
+    if (res.getResponseCode() !== 200) throw new Error('Meta replied: ' + ((body.error && body.error.message) || res.getResponseCode()));
+    (body.data || []).forEach(d => { const m = String(d.date_start).slice(0, 7); byMonth[m] = (byMonth[m] || 0) + Number(d.spend || 0); });
+    url = body.paging && body.paging.next;
+  }
+  const round = n => Math.round(n * 100) / 100;
+  const total = round(Object.keys(byMonth).reduce((s, m) => s + byMonth[m], 0));
+
+  const stamp = 'Ad spend from Meta, updated ' + Utilities.formatDate(new Date(), 'Europe/London', 'd MMM yyyy HH:mm');
+  sh.getRange(SPEND_TOTAL_CELL).setValue(total).setNote(stamp);
+  const n = LAST_ROW - FIRST_ROW + 1;
+  const months = sh.getRange(FIRST_ROW, MONTH_COL, n, 1).getValues();
+  months.forEach((r, i) => {
+    if (!(r[0] instanceof Date)) return;
+    const m = Utilities.formatDate(r[0], tz, 'yyyy-MM');
+    if (m < SPEND_FROM.slice(0, 7) || m > today.slice(0, 7)) return;
+    sh.getRange(FIRST_ROW + i, SPEND_COL).setValue(round(byMonth[m] || 0)).setNote(stamp);
+  });
+  return ' Ad spend from Meta: £' + total.toFixed(2) + '.';
+}
+
 /** The hourly job. */
 function syncBookings() {
   const ss = SpreadsheetApp.getActive();
@@ -188,9 +240,14 @@ function syncBookings() {
     if (lsh && leads.length) added = addNewLeads(lsh, tz, leads);
     TABS.forEach(tab => { const sh = ss.getSheetByName(tab); if (sh) updated += fillBookings(sh, tz, jobs); });
 
-    const summary = (added || updated)
+    // Ad spend is separate, so a problem with Meta never stops leads and bookings updating.
+    let spendNote = '';
+    try { if (lsh) spendNote = updateAdSpend(lsh, tz); }
+    catch (e) { spendNote = ' Ad spend NOT updated: ' + e.message; }
+
+    const summary = ((added || updated)
       ? `Added ${added} new lead${added === 1 ? '' : 's'} and filled in ${updated} booking${updated === 1 ? '' : 's'}.` + leadsNote
-      : 'Up to date. Nothing new in the app.' + leadsNote;
+      : 'Up to date. Nothing new in the app.' + leadsNote) + spendNote;
     if (status) status.setValue('Last checked with the app: ' + Utilities.formatDate(new Date(), 'Europe/London', 'd MMM yyyy, HH:mm') + '. ' + summary);
     return { added, updated, summary };
   } catch (e) {
