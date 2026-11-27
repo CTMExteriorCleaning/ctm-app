@@ -1,4 +1,4 @@
--- Lead tracker link: lets the Google Sheet lead tracker read your booked jobs.
+-- Lead tracker link: lets the Google Sheet lead tracker read your booked jobs and new leads.
 -- Run once in Supabase → SQL Editor. Running it again is safe and keeps the same key.
 -- The result at the bottom shows your private key: paste it into the sheet's script.
 -- Only someone with that key can read the list, and it can only read (never change) anything.
@@ -41,5 +41,31 @@ $$;
 
 revoke all on function public.tracker_feed(text) from public;
 grant execute on function public.tracker_feed(text) to anon, authenticated;
+
+-- Returns the leads saved in the app (Facebook/Instagram ad leads and imported leads).
+create or replace function public.tracker_leads(feed_key text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public, private
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'leadDate', c.data->>'leadDate',
+      'name', c.data->>'name',
+      'phone', c.data->>'phone',
+      'postcode', c.data->>'postcode',
+      'address', c.data->>'address',
+      'service', c.data->>'service',
+      'source', c.data->>'source'
+    ) order by c.data->>'leadDate'), '[]'::jsonb)
+  from private.tracker_feed f
+  join public.records c on c.user_id = f.user_id and c.col = 'customers'
+  where length(coalesce(feed_key, '')) >= 32 and f.key = feed_key
+    and coalesce(c.data->>'leadDate', '') <> '';
+$$;
+
+revoke all on function public.tracker_leads(text) from public;
+grant execute on function public.tracker_leads(text) to anon, authenticated;
 
 select key as "Your tracker key (copy this)" from private.tracker_feed;

@@ -55,7 +55,8 @@ Set `FREEAGENT_SANDBOX=true` as well to try it against a FreeAgent sandbox accou
 
 ## Lead tracker sync (optional)
 
-Fills in your Google Sheet lead tracker from the calendar. Every hour, for each booked job, it finds the matching lead
+Keeps your Google Sheet lead tracker up to date from the app. Every hour it adds new Facebook/Instagram ad leads
+(from 17 Nov 2026 on, skipping window cleaning ones) to the Gutters tab. Then, for each booked job, it finds the matching lead
 (by phone number, then by exact name) and fills in **Booked?** = Yes, **Job value (£)** and **Job date**.
 It only writes into empty cells, and it skips any lead you've marked "No" yourself.
 It uses the first job booked on or after the date the lead enquired.
@@ -68,5 +69,13 @@ It uses the first job booked on or after the date the lead enquired.
    `tracker-sync/Code.gs`, and put your key between the quotes on the `TRACKER_KEY` line. Click **Save**.
 4. **Turn it on.** Reload the sheet. A **Lead tracker** menu appears. Choose **Turn on hourly updates** and allow access when Google asks.
 
-Use **Lead tracker → Update bookings from the app now** to update it straight away. Cells it fills in have a small note saying so.
+Use **Lead tracker → Update from the app now** to update it straight away. Cells it fills in have a small note saying so,
+and cell A5 on the Gutters tab shows when it last checked.
 It fills the Gutters tab; to include another tab, add its name to `TABS` at the top of the script.
+
+### Ad spend from Meta (optional)
+
+The same script can also fill in **Total ad spend** (J9) and each month's **Ad spend** in the month-by-month table, straight from Meta, every hour.
+It counts spend on gutter campaigns (names containing "Gutter") in the "CTM Exterior Cleaning" ad account from 1 Oct 2026, when PS Results took over. Window cleaning ads are left out. To change which campaigns count,
+set `CAMPAIGN_NAME_CONTAINS` ('' counts all). It needs a Meta access token with `ads_read` from a system user in your
+Business portfolio, pasted into `META_TOKEN`. If Meta can't be reached, leads and bookings still update and A5 says why.
